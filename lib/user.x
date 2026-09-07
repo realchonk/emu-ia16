@@ -17,4 +17,6 @@ SECTIONS {
 		*(COMMON)
 		*(.bss*)
 	}
+
+	__brk = .;
 }
