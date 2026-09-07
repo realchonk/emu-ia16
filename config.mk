@@ -8,10 +8,12 @@ AR	?= ia16-elf-ar
 CC	?= ia16-elf-gcc
 LD	?= ${CC}
 OC	?= ia16-elf-objcopy
+OD	?= ia16-elf-objdump
 ASFLAGS	+=
-CFLAGS	+= -Os -ansi -ffreestanding -masm=intel -march=i286 -mcmodel=small
+CFLAGS	+= -Os -ansi -ffreestanding -masm=intel -march=i286
+CFLAGS	+= -mcmodel=tiny -mprotected-mode
 CFLAGS	+= -Wall -Wextra -isystem $./lib/libc/include
 LDFLAGS	+= -s -L${.OBJDIR}/$./lib/libc -nostdlib -lgcc -lc
 LDFLAGS	+= -Wl,--no-warn-rwx-segments
 
-.EXPORTS: AS AR CC LD OC ASFLAGS CFLAGS LDFLAGS
+.EXPORTS: AS AR CC LD OC OD ASFLAGS CFLAGS LDFLAGS

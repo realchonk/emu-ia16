@@ -31,6 +31,9 @@ all: ${BIN}
 run: ${BIN} $./emu/emu
 	$./emu/emu ${BIN:F} ${ARGS}
 
+dump: ${NAME}.elf
+	${OD} -ds -m i8086 -Mintel $< | bat -l asm
+
 clean:
 	rm -f ${BIN} *.o *.elf
 
