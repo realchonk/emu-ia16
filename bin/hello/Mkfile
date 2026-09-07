@@ -1,0 +1,3 @@
+NAME = hello
+OBJS = hello.o
+.expand prog

@@ -1,0 +1,2 @@
+.SUBDIRS: hello echo
+.expand dir

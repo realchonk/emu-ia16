@@ -1,0 +1,6 @@
+/emu
+/bin/echo/echo
+/bin/hello/hello
+*.o
+*.elf
+*.a

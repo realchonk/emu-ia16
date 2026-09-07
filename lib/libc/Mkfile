@@ -1,0 +1,18 @@
+.SUBDIRS: string unistd
+
+OBJS =	unistd/_exit.o		\
+	unistd/write.o		\
+	string/memset.o		\
+	string/memcpy.o		\
+	string/memmove.o	\
+	string/strlen.o		\
+
+all: libc.a
+
+clean:
+	rm -f libc.a *.o ${.SUBDIRS:=/*.o}
+
+libc.a: ${OBJS}
+	${AR} rcs $@ ${OBJS:F}
+
+.expand dir
