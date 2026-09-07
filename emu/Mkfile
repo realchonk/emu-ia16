@@ -1,0 +1,8 @@
+
+all: emu
+
+clean:
+	rm -f emu *.core
+
+emu: emu.c shim.S
+	${HOSTCC} -o $@ emu.c shim.S -no-pie ${HOSTCFLAGS} ${HOSTLDFLAGS}

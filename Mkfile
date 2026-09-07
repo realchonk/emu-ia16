@@ -1,17 +1,6 @@
-.SUBDIRS: lib bin
+.SUBDIRS: emu lib bin
 
 include config.mk
-
-all-extra: emu ${.SUBDIRS}
-
-clean-extra: ${.SUBDIRS:=/clean}
-	rm -f emu test.bin *.core
-
-emu: emu.c shim.S
-	${HOSTCC} -no-pie -o $@ emu.c shim.S
-
-test.bin: test.asm
-	nasm -fbin -o $@ test.asm
 
 .c.o:
 	${CC} -c -o $@ $< ${CFLAGS}

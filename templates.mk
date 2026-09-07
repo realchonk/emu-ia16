@@ -28,8 +28,8 @@ ARGS ?=
 ## Build ${NAME} program
 all: ${BIN}
 
-run: ${BIN} $./emu
-	$./emu ${BIN:F} ${ARGS}
+run: ${BIN} $./emu/emu
+	$./emu/emu ${BIN:F} ${ARGS}
 
 clean:
 	rm -f ${BIN} *.o *.elf

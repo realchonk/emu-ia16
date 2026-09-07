@@ -1,4 +1,4 @@
-/emu
+/emu/emu
 /bin/echo/echo
 /bin/hello/hello
 *.o
