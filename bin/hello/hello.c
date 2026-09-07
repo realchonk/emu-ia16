@@ -1,7 +1,8 @@
 #include <stddef.h>
 #include <unistd.h>
 
-int main (void)
+int
+main ()
 {
 	const char s[] = "Hello World\n";
 	write (1, s, sizeof (s) - 1);

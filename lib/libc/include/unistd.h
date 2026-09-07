@@ -2,7 +2,7 @@
 #define FILE_UNISTD_H
 #include <stddef.h>
 
-void	exit (int);
-int	write (int, const void *, size_t);
+void	exit ();
+int	write ();
 
 #endif /* FILE_UNISTD_H */

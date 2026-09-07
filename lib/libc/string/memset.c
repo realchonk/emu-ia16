@@ -1,7 +1,10 @@
 #include <string.h>
 
 void *
-memset (void *dest, int val, size_t num)
+memset (dest, val, num)
+void	*dest;
+int	 val;
+size_t	 num;
 {
 	size_t i;
 	for (i = 0; i < num; ++i)

@@ -2,7 +2,10 @@
 #include <string.h>
 #include <unistd.h>
 
-int main (int argc, char **argv)
+int
+main (argc, argv)
+int	  argc;
+char	**argv;
 {
 	int i;
 
