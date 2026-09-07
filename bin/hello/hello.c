@@ -1,10 +1,11 @@
 #include <stddef.h>
 #include <unistd.h>
+#include <stdio.h>
 
 int
 main ()
 {
-	const char s[] = "Hello World\n";
-	write (1, s, sizeof (s) - 1);
+	puts ("Hello World");
+	printf ("%s %d\n", "Hello World", 42);
 	return 0;
 }

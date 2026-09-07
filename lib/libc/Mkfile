@@ -1,11 +1,21 @@
-.SUBDIRS: string unistd
+.SUBDIRS: stdio stdlib string unistd
 
-OBJS =	unistd/_exit.o		\
-	unistd/write.o		\
-	string/memset.o		\
+OBJS =	stdio/_printf.o		\
+	stdio/dprintf.o		\
+	stdio/printf.o		\
+	stdio/putchar.o		\
+	stdio/puts.o		\
+	stdlib/calloc.o		\
+	stdlib/errno.o		\
+	stdlib/exit.o		\
+	stdlib/malloc.o		\
 	string/memcpy.o		\
 	string/memmove.o	\
+	string/memset.o		\
 	string/strlen.o		\
+	unistd/_exit.o		\
+	unistd/brk.o		\
+	unistd/write.o		\
 
 all: libc.a
 
