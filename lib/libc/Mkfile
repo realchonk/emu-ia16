@@ -5,6 +5,7 @@ OBJS =	stdio/_printf.o		\
 	stdio/printf.o		\
 	stdio/putchar.o		\
 	stdio/puts.o		\
+	stdio/sprintf.o		\
 	stdlib/calloc.o		\
 	stdlib/errno.o		\
 	stdlib/exit.o		\

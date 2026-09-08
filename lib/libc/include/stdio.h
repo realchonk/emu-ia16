@@ -8,5 +8,6 @@ int	putchar ();
 int	puts ();
 int	printf ();
 int	dprintf ();
+int	sprintf ();
 
 #endif /* FILE_STDIO_H */
