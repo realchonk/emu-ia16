@@ -1,6 +1,6 @@
 /* Copyright (c) 2026 Robert Clausecker */
 shim64:	push	%rdx
-	mov	%eax, %edx	# get system call number
+	movzwl	%ax, %edx	# get system call number (guest only sets %ax)
 	call	sysentry
 	pop	%rdx
 	lretl
