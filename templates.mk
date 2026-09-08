@@ -37,8 +37,10 @@ dump: ${NAME}.elf
 clean:
 	rm -f ${BIN} *.o *.elf
 
-${NAME}.elf: ${OBJS} $./lib/crt0.o $./lib/user.x $./lib/libc/libc.a
-	${CC} -o $@ ${.OBJDIR}/$./lib/crt0.o ${OBJS:F} -T $./lib/user.x ${LDFLAGS}
+.if !target(${NAME}.elf)
+${NAME}.elf: ${OBJS} ${LIBDEPS}
+	${LD} -o $@ ${OBJS:F} ${LDFLAGS}
+.endif
 
 ${BIN}: ${NAME}.elf
 	${OC} -O binary $< $@
