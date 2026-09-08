@@ -6,8 +6,8 @@
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 struct map {
-	struct map	*next, *prev;
 	size_t		 len;
+	struct map	*next, *prev;
 };
 
 #define map_end(m) ((void *)((char *)(m) + (m)->len))
@@ -15,12 +15,14 @@ struct map {
 static struct map *free_list = NULL;
 
 static struct map *
-find_free (num)
-size_t num;
+find_free (num, last)
+struct map	**last;
+size_t		  num;
 {
 	struct map *m;
 
-	for (m = free_list; m != NULL; m = m->next) {
+	*last = NULL;
+	for (m = free_list; m != NULL; *last = m, m = m->next) {
 		if (m->len >= num)
 			return m;
 	}
@@ -32,18 +34,32 @@ void *
 malloc (num)
 size_t num;
 {
-	struct map	*m, *n;
+	struct map	*m, *n, *l;
 	void		*ptr;
 	size_t		 anum;
 
-	anum = num + sizeof (size_t);
-	m = find_free (anum);
+	anum = MAX (num + sizeof (size_t), sizeof (struct map) + 2);
+
+	/* try finding an already free block */
+	m = find_free (anum, &l);
 	if (m == NULL) {
-		ptr = sbrk (MAX (anum, sizeof (struct map)));
+		/* if the free last block is at the brk, just extend it */
+		if (l != NULL && map_end (l) == sbrk (0)) {
+			if (sbrk (anum - l->len) == (void *)-1)
+				return NULL;
+			l->len = anum;
+			return (char *)l + sizeof (size_t);
+		}
+
+		/* if no block was found, allocate by extending the program break */
+		ptr = sbrk (anum);
+		if (ptr == (void *)-1)
+			return NULL;
 		*((size_t *)ptr) = anum;
 		return (char *)ptr + sizeof (size_t);
 	}
 
+	/* if the block found is bigger than requested, split it up */
 	if (m->len >= num + sizeof (struct map) * 2 + 4) {
 		anum = num + sizeof (struct map);
 		n = (void *)((char *)m + anum);
@@ -62,8 +78,7 @@ size_t num;
 	if (n->next != NULL)
 		n->next->prev = n;
 
-	*(volatile size_t *)m = anum;
-
+	m->len = anum;
 	return (char *)m + sizeof (size_t);
 }
 
@@ -88,15 +103,15 @@ void *ptr;
 	struct map	*m, *i, *p = NULL;
 	size_t		 len;
 
-	len = *(volatile size_t *)((char *)ptr - sizeof (size_t));
 	m = (struct map *)((char *)ptr - sizeof (size_t));
+	len = m->len;
 
 	m->next = NULL;
 	m->prev = NULL;
 	m->len = len;
 
 	/* try finding a place to insert into the free list */
-	for (i = free_list; i != NULL && m < i; p = i, i = i->next);
+	for (i = free_list; i != NULL && m > i; p = i, i = i->next);
 
 	if (i == NULL) {
 		if (p == NULL) {

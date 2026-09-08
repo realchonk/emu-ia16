@@ -23,6 +23,6 @@ void *
 sbrk (inc)
 int inc;
 {
-	brk ((char *)__brkp + inc);
-	return __brkp;
+	void *obrk = __brkp;
+	return brk ((char *)__brkp + inc) == 0 ? obrk : (void *)-1;
 }
