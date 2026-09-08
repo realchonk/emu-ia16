@@ -1,5 +1,6 @@
 /emu/emu
 /bin/echo/echo
+/bin/cat/cat
 /bin/hello/hello
 /bin/yacc/yacc
 /bin/yacc/yacc.*
