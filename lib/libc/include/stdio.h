@@ -41,6 +41,7 @@ int	 ungetc ();
 int	 printf ();
 int	 dprintf ();
 int	 fprintf ();
+int	 vfprintf ();
 int	 sprintf ();
 
 #endif /* FILE_STDIO_H */

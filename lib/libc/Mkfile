@@ -23,6 +23,7 @@ OBJS =	stdio/_printf.o		\
 	stdio/sprintf.o		\
 	stdio/stdio.o		\
 	stdio/ungetc.o		\
+	stdio/vfprintf.o	\
 	stdlib/calloc.o		\
 	stdlib/ctype.o		\
 	stdlib/errno.o		\
