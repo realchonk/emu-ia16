@@ -17,6 +17,27 @@ clean: clean-extra
 
 .endt
 
+## Library Template
+.template lib
+.DEFAULT: all
+
+LIB = lib${NAME}.a
+
+all: ${LIB}
+
+clean:
+	rm -f ${LIB} *.o ${.SUBDIRS:=/*.o}
+
+dump: ${LIB}
+	${OD} -ds -m i8086 -Mintel $< | bat -l asm
+
+size: ${LIB}
+	${SIZE} -t $<
+
+${LIB}: ${OBJS}
+	${AR} rcs $@ ${OBJS:F}
+
+.endt
 
 ## Program Template
 .template prog

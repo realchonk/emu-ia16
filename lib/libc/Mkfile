@@ -1,5 +1,7 @@
 .SUBDIRS: stdio stdlib string unistd
 
+NAME =	c
+
 OBJS =	stdio/_printf.o		\
 	stdio/dprintf.o		\
 	stdio/fclose.o		\
@@ -41,12 +43,4 @@ OBJS =	stdio/_printf.o		\
 	unistd/unlink.o		\
 	unistd/write.o		\
 
-all: libc.a
-
-clean:
-	rm -f libc.a *.o ${.SUBDIRS:=/*.o}
-
-libc.a: ${OBJS}
-	${AR} rcs $@ ${OBJS:F}
-
-.expand dir
+.expand lib
