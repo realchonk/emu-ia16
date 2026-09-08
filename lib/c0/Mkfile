@@ -1,0 +1,24 @@
+NAME = c0
+ARGS = c0.ir c0.string < test.c
+
+YACC = ${EMU} ${.OBJDIR}/$./bin/yacc/yacc
+
+OBJS =	lex.o	\
+	main.o	\
+	type.o	\
+	decl.o	\
+	expr.o	\
+	stmt.o	\
+	parse.o	\
+
+parse.o: $./bin/yacc/yacc $./emu/emu c0.y c0.h lex.c main.c type.c \
+		decl.c expr.c stmt.c
+	${YACC} c0.y
+	${CC} -c -o $@ y.tab.c ${CFLAGS} -Wno-implicit-int -Wno-return-type \
+		-Wno-implicit-function-declaration -Wno-unused-label
+	rm -f y.tab.c
+
+clean-extra:
+	rm -f y.tab.c c0.ir c0.string
+
+.expand prog
