@@ -1,7 +1,8 @@
 NAME = c0
-ARGS = c0.ir c0.string < test.c
+ARGS = c0.ir c0.sym < test.c
 
-YACC = ${EMU} ${.OBJDIR}/$./bin/yacc/yacc
+YACC = ${EMU:F} ${.OBJDIR}/$./bin/yacc/yacc
+CFLAGS += -O1
 
 OBJS =	lex.o	\
 	main.o	\
@@ -9,16 +10,21 @@ OBJS =	lex.o	\
 	decl.o	\
 	expr.o	\
 	stmt.o	\
+	emit.o	\
+	ldivmod.o \
 	parse.o	\
 
+ldivmod.o: ldivmod.asm
+	${AS} -felf32 -o $@ ldivmod.asm
+
 parse.o: $./bin/yacc/yacc $./emu/emu c0.y c0.h lex.c main.c type.c \
-		decl.c expr.c stmt.c
+		decl.c expr.c stmt.c emit.c
 	${YACC} c0.y
 	${CC} -c -o $@ y.tab.c ${CFLAGS} -Wno-implicit-int -Wno-return-type \
 		-Wno-implicit-function-declaration -Wno-unused-label
 	rm -f y.tab.c
 
 clean-extra:
-	rm -f y.tab.c c0.ir c0.string
+	rm -f y.tab.c c0.ir c0.sym
 
 .expand prog

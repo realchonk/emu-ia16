@@ -1,7 +1,6 @@
 #include <_varargs.h>
 #include <string.h>
 #include <stdlib.h>
-#include <stdio.h>
 #include <ctype.h>
 #include "c0.h"
 
@@ -20,7 +19,14 @@ long		numval;
 int		numbt;
 
 static int	bol = 1;
-static int	sidx;			/* strings written to fstr so far */
+static int	sidx;			/* string bytes written so far */
+
+/*
+ * The string bytes are collected here, so that the IR emitter can
+ * define string literals as data records; the index stored in a
+ * STRING token is an offset into this array.
+ */
+char		sdata[NSDATA];
 
 struct kwent {
 	char	*k_name;
@@ -61,8 +67,6 @@ static const struct kwent kwtab[] = {
 };
 
 /* interned identifier strings, kept for the life of the run */
-#define	NNAME	6144
-#define	NINT	640
 
 static char	 narena[NNAME];
 static int	 narenai;
@@ -97,12 +101,15 @@ error (fmt)
 const char *fmt;
 {
 	va_list ap;
+	int a1, a2;
 
 	va_start (ap, fmt);
-	fprintf (stderr, "%d: ", linenum);
-	vfprintf (stderr, fmt, ap);
-	fprintf (stderr, "\n");
+	a1 = va_arg (ap, int);
+	a2 = va_arg (ap, int);
 	va_end (ap);
+	mini (2, "%d: ", linenum, 0);
+	mini (2, fmt, a1, a2);
+	oputc ('\n', 2);
 	exit (1);
 }
 
@@ -111,7 +118,7 @@ get ()
 {
 	int ch;
 
-	ch = getchar ();
+	ch = c0getc ();
 	if (ch == '\n') {
 		++linenum;
 		bol = 1;
@@ -128,7 +135,7 @@ int ch;
 		--linenum;
 		bol = 0;
 	}
-	ungetc (ch, stdin);
+	c0ungetc (ch);
 }
 
 static int
@@ -352,10 +359,14 @@ lex ()
 				goto put;
 			ch = escape (get ());
 		put:
-			fputc (ch, fstr);
+			if (sidx >= (int) sizeof (sdata))
+				error ("too much string data");
+			sdata[sidx] = ch;
 			++sidx;
 		}
-		fputc ('\0', fstr);
+		if (sidx >= (int) sizeof (sdata))
+			error ("too much string data");
+		sdata[sidx] = '\0';
 		++sidx;
 		yylval = (int) v;
 		return STRING;
@@ -415,99 +426,55 @@ lex ()
 		yylval = '!';
 		return UNOP;
 	case '+':
-		c2 = get ();
-		if (c2 == '+') {
-			yylval = '+';
-			return INCOP;
-		}
-		if (c2 == '=') {
-			yylval = O_ADDA;
-			return ASGN;
-		}
-		unget (c2);
-		yylval = '+';
-		return ADDOP;
 	case '-':
 		c2 = get ();
-		if (c2 == '-') {
-			yylval = '-';
+		if (c2 == ch) {
+			yylval = ch;
 			return INCOP;
 		}
-		if (c2 == '=') {
-			yylval = O_SUBA;
-			return ASGN;
-		}
-		if (c2 == '>') {
+		if (ch == '-' && c2 == '>') {
 			yylval = O_ARROW;
 			return MBROP;
 		}
+		if (c2 == '=') {
+			yylval = ch == '+' ? O_ADDA : O_SUBA;
+			return ASGN;
+		}
 		unget (c2);
-		yylval = '-';
+		yylval = ch;
 		return ADDOP;
 	case '*':
-		c2 = get ();
-		if (c2 == '=') {
-			yylval = O_MULA;
-			return ASGN;
-		}
-		unget (c2);
-		yylval = '*';
-		return MULOP;
 	case '/':
-		c2 = get ();
-		if (c2 == '=') {
-			yylval = O_DIVA;
-			return ASGN;
-		}
-		unget (c2);
-		yylval = '/';
-		return MULOP;
 	case '%':
 		c2 = get ();
 		if (c2 == '=') {
-			yylval = O_MODA;
+			yylval = ch == '*' ? O_MULA
+			      : ch == '/' ? O_DIVA : O_MODA;
 			return ASGN;
 		}
 		unget (c2);
-		yylval = '%';
+		yylval = ch;
 		return MULOP;
 	case '<':
-		c2 = get ();
-		if (c2 == '<') {
-			ch = get ();
-			if (ch == '=') {
-				yylval = O_LSA;
-				return ASGN;
-			}
-			unget (ch);
-			yylval = O_LS;
-			return SHIFT;
-		}
-		if (c2 == '=') {
-			yylval = O_LE;
-			return RELOP;
-		}
-		unget (c2);
-		yylval = '<';
-		return RELOP;
 	case '>':
+		/* < <= << <<=  and  > >= >> >>= */
 		c2 = get ();
-		if (c2 == '>') {
-			ch = get ();
-			if (ch == '=') {
-				yylval = O_RSA;
+		if (c2 == ch) {
+			d = get ();
+			if (d == '=') {
+				yylval = ch == '<' ? O_LSA : O_RSA;
 				return ASGN;
 			}
-			unget (ch);
-			yylval = O_RS;
+			unget (d);
+			yylval = ch == '<' ? O_LS : O_RS;
 			return SHIFT;
 		}
 		if (c2 == '=') {
-			yylval = O_GE;
+			yylval = ch == '<' ? O_LE : O_GE;
 			return RELOP;
 		}
 		unget (c2);
-		yylval = '>';
+		yylval = ch;
 		return RELOP;
 	default:
 		error ("invalid character '%c' (0%o)", ch, ch);

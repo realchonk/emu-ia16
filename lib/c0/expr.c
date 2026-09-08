@@ -1,5 +1,4 @@
 #include <string.h>
-#include <stdio.h>
 #include "c0.h"
 
 /*
@@ -10,10 +9,11 @@
  * function definition.
  */
 
-#define NNODE	1024
 
 static struct node	npool[NNODE];
 static int		nnpool;
+long			lcons[NLCON];
+static int		nlcon;
 
 static struct node *
 mknode (op, tp, l, r)
@@ -57,6 +57,10 @@ struct node *e;
 
 /* ---------------- constant folding ---------------- */
 
+/* signed 32/16 division and remainder, in ldivmod.asm; divisors must
+   fit in a word, or the expression is not folded */
+long	ldivmod ();
+
 long
 fold (e, ok)
 struct node *e;
@@ -69,6 +73,8 @@ int *ok;
 		return 0;
 	if (e->n_op == O_CON)
 		return e->n_val;
+	if (e->n_op == O_LCON)
+		return lcons[e->n_val];
 	l = r = 0;
 	if (e->n_l != NULL)
 		l = fold (e->n_l, ok);
@@ -100,13 +106,19 @@ int *ok;
 			*ok = 0;
 			return 0;
 		}
-		return l / r;
+		if (r >= -32768 && r <= 32767)
+			return ldivmod (l, (int) r, 0);
+		*ok = 0;
+		return 0;
 	case '%':
 		if (r == 0) {
 			*ok = 0;
 			return 0;
 		}
-		return l % r;
+		if (r >= -32768 && r <= 32767)
+			return ldivmod (l, (int) r, 1);
+		*ok = 0;
+		return 0;
 	case '&':
 		return l & r;
 	case '|':
@@ -155,8 +167,9 @@ char *name;
 		 * consult both its lookahead and the lexer's.
 		 */
 		if ((yychar >= 0 ? yychar : lexpeek ()) == '(') {
-			/* implicit function declaration, as in K&R C */
-			sp = install (name, SC_EXTERN);
+			/* implicit function declaration, as in K&R C;
+			   always an external symbol */
+			sp = ginstall (name, SC_EXTERN);
 			sp->s_tp = mktype (T_FUNC, btype (BT_INT), 0, NULL,
 					   NULL);
 		} else {
@@ -175,7 +188,14 @@ ncon ()
 	struct node *n;
 
 	n = mknode (O_CON, btype (numbt), NULL, NULL);
-	n->n_val = numval;
+	if (numval < -32768 || numval > 32767) {
+		if (nlcon >= NLCON)
+			error ("too many long constants");
+		lcons[nlcon] = numval;
+		n->n_op = O_LCON;
+		n->n_val = nlcon++;
+	} else
+		n->n_val = (int) numval;
 	return n;
 }
 
@@ -301,7 +321,7 @@ struct node *l, *r;
 	exproper (r);
 	if (!islval (l)) {
 		typerr ("assignment to non-lvalue");
-		return mknode (op == '=' ? '=' : O_ADDA, l->n_tp, l, r);
+		return mknode (op, l->n_tp, l, r);
 	}
 	lt = l->n_tp;
 	rt = decay (r->n_tp);
@@ -328,13 +348,16 @@ struct node *l, *r;
 		else if (!isptr (decay (lt)) && !isarith (decay (lt)))
 			typerr ("invalid assignment operand");
 	}
-	return mknode ('=', lt, l, r);
+	/* keep the compound operator in n_op for the IR emitter */
+	return mknode (op, lt, l, r);
 }
 
 struct node *
 ncond (c, t, f)
 struct node *c, *t, *f;
 {
+	struct node *n;
+
 	exproper (c);
 	exproper (t);
 	exproper (f);
@@ -343,9 +366,9 @@ struct node *c, *t, *f;
 	if (t != NULL && f != NULL && !compat (decay (t->n_tp),
 					       decay (f->n_tp)))
 		typerr ("incompatible branches of ?:");
-	return mknode (O_COND, t == NULL ? btype (BT_INT) : t->n_tp, c,
-		       t);
-	/* f is kept via t->... for a later pass; for checking, done */
+	n = mknode (O_COND, t == NULL ? btype (BT_INT) : t->n_tp, c, t);
+	n->n_val = (long) (int) f;		/* third child, kept in n_val */
+	return n;
 }
 
 struct node *
@@ -411,8 +434,8 @@ struct node *e;
 }
 
 struct node *
-ninc (op, e)
-int op;
+ninc (op, e, pre)
+int op, pre;
 struct node *e;
 {
 	exproper (e);
@@ -420,6 +443,9 @@ struct node *e;
 		typerr ("operand of ++/-- must be an lvalue");
 	else if (!isscalar (decay (e->n_tp)))
 		typerr ("operand of ++/-- must be scalar");
+	if (pre)
+		return mknode (op == '+' ? O_PREINC : O_PREDEC, e->n_tp, e,
+			       NULL);
 	return mknode (op == '+' ? O_POSTINC : O_POSTDEC, e->n_tp, e,
 		       NULL);
 }
@@ -479,7 +505,9 @@ char *name;
 		typerr ("no member named '%s'", name);
 		return mknode (op, btype (BT_INT), l, NULL);
 	}
-	return mknode (op, m->s_tp, l, NULL);
+	/* the member symbol rides in n_r, so the emitter can find its
+	   offset */
+	return mknode (op, m->s_tp, l, (struct node *) m);
 }
 
 static int
@@ -593,4 +621,31 @@ ilist (list)
 struct node *list;
 {
 	return mknode (O_ILIST, NULL, list, NULL);
+}
+
+/* a constant of the given value (word or long, whichever fits) */
+struct node *
+nconst (v)
+long v;
+{
+	struct node *n;
+
+	n = mknode (O_CON, btype (BT_INT), NULL, NULL);
+	if (v < -32768 || v > 32767) {
+		if (nlcon >= NLCON)
+			error ("too many long constants");
+		lcons[nlcon] = v;
+		n->n_op = O_LCON;
+		n->n_val = nlcon++;
+	} else
+		n->n_val = (int) v;
+	return n;
+}
+
+/* a reference node for a symbol the parser never saw (switch temps) */
+struct node *
+nlocal (sp)
+struct symb *sp;
+{
+	return mknode (O_NAME, sp->s_tp, (struct node *) sp, NULL);
 }

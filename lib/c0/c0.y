@@ -253,38 +253,57 @@ direct_abs: '(' abs_decl ')'		{ $$ = $2; }
 stmt	: e ';'					{ stmtx ((struct node *) $1); }
 	| ';'
 	| compound
-	| IF '(' e ')' stmt			{ stmtcond ((struct node *) $3); }
-	| IF '(' e ')' stmt ELSE stmt		{ stmtcond ((struct node *) $3); }
+	| IF ifcond stmt			{ sifend (); }
+	| IF ifcond stmt ELSE		{ selse (); }
+	  stmt				{ sifendelse (); }
 	| WHILE '(' e ')'			{ stmtcond ((struct node *) $3);
+						  swhile ((struct node *) $3);
 						  loopbegin (); }
-	  stmt				{ loopend (); }
-	| DO					{ loopbegin (); }
+	  stmt				{ swhileend (); loopend (); }
+	| DO					{ sdo (); loopbegin (); }
 	  stmt WHILE '(' e ')' ';'		{ loopend ();
-						  stmtcond ((struct node *) $6); }
+						  sdoend ((struct node *) $6); }
 	| FOR '(' fe ';' fe ';' fe ')'	{ stmtfor ((struct node *) $3,
 						 (struct node *) $5,
 						 (struct node *) $7);
+						  sfor ((struct node *) $3,
+						 (struct node *) $5,
+						 (struct node *) $7);
 						  loopbegin (); }
-	  stmt				{ loopend (); }
+	  stmt				{ sforend (); loopend (); }
 	| SWITCH '(' e ')'			{ stmtswitch ((struct node *) $3);
+						  sswitch ((struct node *) $3);
 						  swbegin (); }
-	  stmt				{ swend (); }
+	  stmt				{ swend (); sswitchend (); }
 	| BREAK ';'				{ stmtbrk (); }
 	| CONTINUE ';'				{ stmtcont (); }
 	| GOTO IDENTIFIER ';'			{ stmtgoto ((char *) $2); }
 	| RETURN ';'				{ stmtret ((struct node *) 0); }
 	| RETURN e ';'				{ stmtret ((struct node *) $2); }
-	| IDENTIFIER ':' stmt			{ stmtlabel ((char *) $1); }
-	| CASE asgE ':' stmt			{ stmtcase ((struct node *) $2); }
-	| DEFAULT ':' stmt			{ stmtdflt (); }
+	| IDENTIFIER ':'			{ stmtlabel ((char *) $1); } stmt
+	| CASE asgE ':'			{ stmtcase ((struct node *) $2); } stmt
+	| DEFAULT ':'			{ stmtdflt (); } stmt
 	| error ';'
+	;
+
+/*
+ * The if condition is factored out so that both if forms share one
+ * action, which records the branch before the body is parsed.
+ */
+ifcond	: '(' e ')'				{ stmtcond ((struct node *) $2);
+						  sif ((struct node *) $2); }
 	;
 
 fe	: /* empty */
 	| e
 	;
 
-fbody	: '{'				{ blkpush (); } block '}'	{ blkpop (); }
+/*
+ * The body shares the parameter scope (pushed in fdef_dcl), so that
+ * getlocals at fdefend sees the parameters and the declarations in
+ * one list; the parameters come first.
+ */
+fbody	: '{' block '}'
 	;
 
 block	: dcls stmts
@@ -392,7 +411,8 @@ cast	: '(' type_name ')' cast		{ $$ = (int) ncast ((struct type *) $2,
 unary	: UNOP cast				{ $$ = (int) nun ($1, (struct node *) $2); }
 	| ADDOP cast %prec UMINUS		{ $$ = (int) nun ($1, (struct node *) $2); }
 	| MULOP cast %prec UMINUS		{ $$ = (int) nun ($1, (struct node *) $2); }
-	| INCOP cast %prec UMINUS		{ $$ = (int) ninc ($1, (struct node *) $2); }
+	| INCOP cast %prec UMINUS		{ $$ = (int) ninc ($1,
+							 (struct node *) $2, 1); }
 	| '&' cast %prec UMINUS		{ $$ = (int) naddr ((struct node *) $2); }
 	| SIZEOF '(' type_name ')' %prec INCOP	{ $$ = (int) nsize ((struct node *) 0,
 							  (struct type *) $3); }
@@ -410,7 +430,7 @@ postfix	: primary
 							  (struct node *) $3); }
 	| postfix MBROP IDENTIFIER		{ $$ = (int) nmember ((struct node *) $1, $2,
 							  (char *) $3); }
-	| postfix INCOP			{ $$ = (int) ninc ($2, (struct node *) $1); }
+	| postfix INCOP			{ $$ = (int) ninc ($2, (struct node *) $1, 0); }
 	;
 
 arglist	: asgE

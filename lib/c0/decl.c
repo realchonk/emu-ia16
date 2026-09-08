@@ -1,5 +1,4 @@
 #include <string.h>
-#include <stdio.h>
 #include "c0.h"
 
 /*
@@ -8,11 +7,8 @@
  * declarator machinery that turns `int *a[3]` into a type.
  */
 
-#define NSYMB	768
-#define NSCOPE	16
-#define NSU	16
-#define NDCL	256
-#define NDSPEC	96
+
+static void	chkitem ();
 
 /* ---------------- symbol table ---------------- */
 
@@ -86,6 +82,22 @@ int sc;
 		s->s_next = globals;
 		globals = s;
 	}
+	return s;
+}
+
+/* install into the global scope, wherever we are (implicit functions) */
+struct symb *
+ginstall (name, sc)
+char *name;
+int sc;
+{
+	struct symb *s;
+
+	s = mksymb ();
+	s->s_name = name;
+	s->s_sc = sc;
+	s->s_next = globals;
+	globals = s;
 	return s;
 }
 
@@ -210,6 +222,7 @@ static struct {
 	struct type	*su;
 	struct symb	**tail;
 	int		 size;
+	int		 offs;		/* next member offset (structs) */
 	int		 isunion;
 } sustack[NSU];
 static int nsu;
@@ -266,6 +279,7 @@ char *tag;
 	sustack[nsu].su = tp;
 	sustack[nsu].tail = &tp->t_memb;
 	sustack[nsu].size = 0;
+	sustack[nsu].offs = 0;
 	sustack[nsu].isunion = (sou == T_UNION);
 	++nsu;
 	return tp;
@@ -336,13 +350,16 @@ struct dcl *d;
 
 	sz = tysize (tp);
 	if (sustack[nsu - 1].isunion) {
+		m->s_offs = 0;
 		if (sz > sustack[nsu - 1].size)
 			sustack[nsu - 1].size = sz;
 	} else {
 		align = sz > 1 ? 2 : 1;
-		sustack[nsu - 1].size =
-			(sustack[nsu - 1].size + align - 1) & ~(align - 1);
-		sustack[nsu - 1].size += sz;
+		sustack[nsu - 1].offs =
+			(sustack[nsu - 1].offs + align - 1) & ~(align - 1);
+		m->s_offs = sustack[nsu - 1].offs;
+		sustack[nsu - 1].offs += sz;
+		sustack[nsu - 1].size = sustack[nsu - 1].offs;
 	}
 }
 
@@ -484,9 +501,13 @@ struct dcl *d;
 			n = 0;
 			if (d->d_size != NULL) {
 				v = fold (d->d_size, &ok);
-				if (!ok)
+				if (!ok) {
 					typerr ("array size is not constant");
-				else
+					n = 1;
+				} else if (v < 0 || v > 65535) {
+					typerr ("invalid array size");
+					n = 1;
+				} else
 					n = (int) v;
 			}
 			t = mktype (T_ARY, t, n, NULL, NULL);
@@ -537,7 +558,6 @@ int bt;
 {
 	struct dspec *p = mkdspec ();
 
-	p->p_sc = 0;
 	p->p_bt = bt;
 	p->p_tp = NULL;
 	return p;
@@ -549,7 +569,6 @@ struct symb *sp;
 {
 	struct dspec *p = mkdspec ();
 
-	p->p_sc = 0;
 	p->p_bt = 0;
 	p->p_tp = sp->s_tp;
 	return p;
@@ -561,7 +580,6 @@ struct type *tp;
 {
 	struct dspec *p = mkdspec ();
 
-	p->p_sc = 0;
 	p->p_bt = 0;
 	p->p_tp = tp;
 	return p;
@@ -661,6 +679,10 @@ struct node *init;
 			return;
 		}
 		sc = curd.sc == 0 ? SC_EXTERN : curd.sc;
+		sp = install (name, sc);
+		sp->s_tp = tp;
+		emit_fdecl (name, sc);
+		return;
 	} else {
 		old = nscope > 0 ? scopefind (scopes[nscope], name)
 				 : scopefind (globals, name);
@@ -673,7 +695,7 @@ struct node *init;
 			chkinit (tp, init);
 			return;
 		}
-		sc = curd.sc == 0 ? (nscope > 0 ? SC_AUTO : SC_EXTERN)
+		sc = curd.sc == 0 ? (nscope > 0 ? SC_AUTO : SC_GLOBAL)
 				  : curd.sc;
 	}
 
@@ -686,6 +708,47 @@ struct node *init;
 		 || (tp->t_op & BT_MASK) == BT_VOID)
 		typerr ("'%s' has void type", name);
 	chkinit (tp, init);
+	if (nscope == 0) {
+		emit_data (name, sc, tp, init);
+		expr_reset ();		/* the init nodes are consumed */
+	} else if (sc == SC_STATIC)
+		emit_static (sp, tp, init);
+}
+
+/*
+ * Collect the locals of the innermost scope in declaration order
+ * (parameters first, then autos; statics are emitted as globals and
+ * are skipped).  Fills tab, returns the count.
+ */
+int
+getlocals (tab)
+struct symb *tab[];
+{
+	struct symb *s;
+	int i, n;
+
+	n = 0;
+	for (s = scopes[nscope]; s != NULL; s = s->s_next)
+		if (s->s_sc != SC_STATIC && s->s_sc != SC_TYPEDEF)
+			tab[n++] = s;
+	for (i = 0; i < n / 2; ++i) {
+		s = tab[i];
+		tab[i] = tab[n - 1 - i];
+		tab[n - 1 - i] = s;
+	}
+	return n;
+}
+
+/* count the elements of an initializer list */
+static int
+countitems (e)
+struct node *e;
+{
+	if (e == NULL)
+		return 0;
+	if (e->n_op != O_COMMA)
+		return 1;
+	return countitems (e->n_l) + countitems (e->n_r);
 }
 
 void
@@ -693,7 +756,7 @@ chkinit (tp, init)
 struct type *tp;
 struct node *init;
 {
-	struct node *list, *item;
+	struct node *list;
 	struct symb *m;
 	int n, count;
 
@@ -703,31 +766,22 @@ struct node *init;
 		list = init->n_l;
 		if (tp->t_op == T_ARY) {
 			if (list != NULL && list->n_op == O_STR
-			    && (tp->t_tp->t_op & BT_MASK) == BT_CHAR)
+			    && (tp->t_tp->t_op & BT_MASK) == BT_CHAR) {
+				if (tp->t_size == 0)
+					tp->t_size = strnlen (list) + 1;
 				return;
-			count = 0;
-			for (item = list; item != NULL; ) {
-				++count;
-				item = item->n_op == O_COMMA ? item->n_r : NULL;
 			}
+			count = countitems (list);
+			if (tp->t_size == 0)
+				tp->t_size = count;
 			if (tp->t_size != 0 && count > tp->t_size)
 				typerr ("too many initializers");
-			for (item = list; item != NULL; ) {
-				if (!compat (tp->t_tp,
-					     decay (item->n_tp)))
-					typerr ("bad initializer element");
-				item = item->n_op == O_COMMA ? item->n_r
-							     : NULL;
-			}
+			chkitem (tp->t_tp, list);
 		} else if (tp->t_op == T_STRUCT || tp->t_op == T_UNION) {
 			n = 0;
 			for (m = tp->t_memb; m != NULL; m = m->s_next)
 				++n;
-			count = 0;
-			for (item = list; item != NULL; ) {
-				++count;
-				item = item->n_op == O_COMMA ? item->n_r : NULL;
-			}
+			count = countitems (list);
 			if (count > n)
 				typerr ("too many initializers");
 		}
@@ -737,11 +791,43 @@ struct node *init;
 
 	if (tp->t_op == T_ARY) {
 		if (init->n_op == O_STR
-		    && (tp->t_tp->t_op & BT_MASK) == BT_CHAR)
+		    && (tp->t_tp->t_op & BT_MASK) == BT_CHAR) {
+			if (tp->t_size == 0)
+				tp->t_size = strnlen (init) + 1;
 			return;
+		}
 		typerr ("array initializer requires braces");
 		return;
 	}
 	if (!compat (tp, decay (init->n_tp)))
 		typerr ("incompatible initializer");
+}
+
+/* check each element of a braced initializer against tp */
+static void
+chkitem (tp, e)
+struct type *tp;
+struct node *e;
+{
+	if (e == NULL)
+		return;
+	if (e->n_op == O_COMMA) {
+		chkitem (tp, e->n_l);
+		chkitem (tp, e->n_r);
+		return;
+	}
+	if (!compat (tp, decay (e->n_tp)))
+		typerr ("bad initializer element");
+}
+
+/* length of the string referenced by an O_STR node */
+int
+strnlen (n)
+struct node *n;
+{
+	int len = 0;
+
+	while (sdata[n->n_val + len] != '\0')
+		++len;
+	return len;
 }

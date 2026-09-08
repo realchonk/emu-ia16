@@ -1,9 +1,58 @@
 #ifndef FILE_C0_H
 #define FILE_C0_H
-#include <stdio.h>
+#include <stddef.h>
 #include <cdefs.h>
 
+#define EOF	(-1)
+
+/* output file descriptors; input is file descriptor 0 */
+extern int	firfd, symfd;
+
 #define MAXIDENT	31
+
+/*
+ * Pool and table sizes.  Everything c0 allocates comes from static
+ * pools sized here; code, parser tables and pools together must stay
+ * below the 64K segment, with room left for the stack.
+ */
+
+/* lex.c */
+#define	NNAME	6144			/* identifier arena, bytes */
+#define	NINT	640			/* interned identifiers */
+#define	NSDATA	1280			/* string literal bytes */
+
+/* type.c */
+#define	NTYPE	208			/* type pool entries */
+
+/* decl.c */
+#define	NSYMB	384			/* symbol pool entries */
+#define	NSCOPE	16			/* block nesting depth */
+#define	NSU	16			/* struct/union nesting depth */
+#define	NDCL	184			/* declarator tree nodes */
+#define	NDSPEC	80			/* type name specifiers */
+
+/* expr.c */
+#define	NNODE	720			/* expression tree nodes */
+#define	NLCON	16			/* long constants (O_LCON) */
+
+/* stmt.c */
+#define	NSREC	256			/* lowered statements per function */
+#define	NCASE	60			/* case labels per file */
+#define	NLAB	64			/* labels per function */
+#define	NNEST	32			/* nested loops, ifs, switches */
+#define	NSW	8			/* nested switches */
+#define	NLOC	128			/* params and locals per function */
+#define	NLABCH	320			/* label name arena, bytes */
+
+/* emit.c */
+#define	NSYMNM	256			/* names in the symbol file */
+#define	NNAMEAR	1024			/* generated names, bytes */
+#define	NSTRDEF	96			/* distinct string literals */
+#define	NSTATIC	48			/* static locals */
+#define	NITEM	128			/* flattened initializer items */
+
+/* parse.o (y.tab.c) */
+#define	YYMAXDEPTH	64		/* parser stack depth */
 
 /*
  * Token numbers.  These MUST match the %token declarations in c0.y.
@@ -36,6 +85,7 @@
 #define	SC_TYPEDEF	5
 #define	SC_TAG		6
 #define	SC_PARAM	7
+#define	SC_GLOBAL	8		/* top-level definition (default) */
 
 /* base type keywords; token TYPEKW, value a BT_* bit combination */
 #define	TYPEKW		281
@@ -118,8 +168,9 @@
 #define	O_COND		0x9d
 #define	O_MEMBER	0x9e
 #define	O_ARROW		0x9f
-#define	O_ADDR		0xa0
-#define	O_ILIST		0xa1
+#define	O_ADDR	0xa0
+#define	O_ILIST	0xa1
+#define	O_LCON	0xa2
 
 struct type {
 	int		 t_op;		/* BT_* bits or T_* code */
@@ -134,16 +185,24 @@ struct symb {
 	struct symb	*s_next;	/* scope chain */
 	char		*s_name;
 	struct type	*s_tp;
-	int		 s_sc;		/* SC_* */
+	int		 s_sc;		/* SC_*; struct/union members store
+					   their byte offset here instead
+					   (s_offs), as the two uses never
+					   coincide */
 };
+#define	s_offs	s_sc
 
 struct node {
 	int		 n_op;
 	struct type	*n_tp;
 	struct node	*n_l, *n_r;
-	long		 n_val;		/* O_CON: value; O_STR: string index;
-					   O_MEMBER/O_ARROW: member name */
+	int		 n_val;		/* O_CON: value; O_LCON: index into
+					   lcons; O_STR: string index;
+					   O_COND: else branch (a node *) */
 };
+
+/* values too large for an int live in this small pool (O_LCON nodes) */
+extern long	 lcons[];
 
 /* declarator parse tree */
 #define	D_NAME		0
@@ -154,25 +213,68 @@ struct node {
 struct dcl {
 	int		 d_op;
 	struct dcl	*d_l;
-	struct node	*d_size;	/* D_ARY: size expression or NULL */
-	char		*d_name;	/* D_NAME */
-	struct symb	*d_params;	/* D_FUNC: parameter names */
+	union {				/* by d_op, exactly one of these */
+		char		*d_name;	/* D_NAME */
+		struct symb	*d_params;	/* D_FUNC */
+		struct node	*d_size;	/* D_ARY */
+	} d_u;
 };
+#define	d_name	d_u.d_name
+#define	d_params d_u.d_params
+#define	d_size	d_u.d_size
 
 /* declaration specifiers */
 struct dspec {
-	int		 p_sc;
 	int		 p_bt;
 	struct type	*p_tp;
 };
 
-extern FILE	*fstr, *fir;
+/* statement records: the body lowered to jumps and branches (stmt.c) */
+struct swcase {
+	struct swcase	*next;
+	int		 val;
+	char		*lab;
+};
+
+struct srec {
+	int		 kind;		/* S_* */
+	union {
+		struct {			/* S_EXPR, S_RET(V), S_LABEL,
+					   S_JUMP, S_BR */
+			struct node	*e;	/* expression / condition */
+			char		*lab;	/* label / true label */
+			char		*lf;	/* S_BR false label */
+		} s;
+		struct {			/* S_SW */
+			struct node	*t;	/* the switch temporary */
+			struct swcase	*cases;
+			char		*lf;	/* end label (shared with s) */
+			char		*dflt;	/* default label or NULL */
+		} w;
+	} u;
+};
+#define	r_e	u.s.e
+#define	r_lab	u.s.lab
+#define	r_lf	u.s.lf
+#define	r_t	u.w.t
+#define	r_cases	u.w.cases
+#define	r_dflt	u.w.dflt
+
+#define	S_EXPR		0
+#define	S_RET		1
+#define	S_RETV		2
+#define	S_LABEL		3
+#define	S_JUMP		4
+#define	S_BR		5
+#define	S_SW		6
+
 extern int	 linenum;
 extern int	 yylval;
 extern int	 yychar;		 /* parser lookahead, for the lexer hack */
 extern long	 numval;		 /* value of the last INTEGER */
 extern int	 numbt;			 /* BT_* bits of the last INTEGER */
 extern int	 nerrors;
+extern char	 sdata[];		 /* the string bytes, for initializers */
 
 int	 yylex ();
 int	 lexpeek ();		 /* peek at the next token, unconsumed */
@@ -180,6 +282,9 @@ int	 yyparse ();
 int	 yyerror ();
 __dead void error ();
 void	 typerr ();
+void	 mini ();			 /* tiny formatter: %s %d %c %o */
+void	 oputc (), oputs ();	 /* write bytes to a file descriptor */
+int	 c0getc (), c0ungetc ();
 
 /* type.c */
 struct type	*mktype (), *btype (), *decay (), *usual ();
@@ -188,15 +293,15 @@ int		 fixbt (), isarith (), isptr (), isscalar (), compat (),
 
 /* decl.c */
 extern int	 nscope;
-struct symb	*lookup (), *install (), *insparam (), *param1 (),
-		 *paramn ();
+struct symb	*lookup (), *install (), *ginstall (), *insparam (),
+		 *param1 (), *paramn ();
 struct type	*curbase (), *su_begin (), *su_end (), *su_ref (),
 		 *dcltype (), *tn_type ();
 struct dcl	*dstar (), *dptrn (), *dchain (), *dname (), *dfunc (),
 		 *dary ();
 struct dspec	*tn_bt (), *tn_td (), *tn_su (), *tn_cat ();
 char		*dclname ();
-int		 curd_sc ();
+int		 curd_sc (), getlocals (), strnlen ();
 void		 dcl_reset (), dclpool_reset (), sc_sclass (), sc_type (),
 		 sc_const (), sc_su (), sc_td (), member (), bindparam (),
 		 dclinst (), chkinit (), blkpush (), blkpop ();
@@ -205,14 +310,22 @@ void		 dcl_reset (), dclpool_reset (), sc_sclass (), sc_type (),
 struct node	*nname (), *ncon (), *nstr (), *nbina (), *nlog (),
 		 *nasgn (), *ncond (), *nun (), *naddr (), *ninc (),
 		 *nindex (), *nmember (), *ncall (), *ncast (), *ncomma (),
-		 *nsize (), *ilist (), *exproper ();
+		 *nsize (), *ilist (), *exproper (), *nconst (), *nlocal ();
 long		 fold ();
 void		 expr_reset ();
 
 /* stmt.c */
+extern struct symb *curfunc;
 void		 fdef_dcl (), fdefend (), loopbegin (), loopend (),
 		 swbegin (), swend (), stmtx (), stmtcond (), stmtfor (),
 		 stmtswitch (), stmtcase (), stmtdflt (), stmtret (),
 		 stmtgoto (), stmtlabel (), stmtbrk (), stmtcont ();
+void		 sif (), sifend (), selse (), sifendelse (), swhile (),
+		 swhileend (), sdo (), sdoend (), sfor (), sforend (),
+		 sswitch (), sswitchend ();
+
+/* emit.c */
+void	 emit_data (), emit_fdecl (), emit_static (), emit_func ();
+char	*numstr ();		 /* append a decimal number to a string */
 
 #endif /* FILE_C0_H */

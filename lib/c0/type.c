@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include "c0.h"
 
 /*
@@ -7,7 +6,6 @@
  * base types are cached so that `int` is always the same pointer.
  */
 
-#define NTYPE	384
 
 static struct type	tpool[NTYPE];
 static int		ntpool;
@@ -97,18 +95,30 @@ struct type *t;
 	return isarith (t) || isptr (t);
 }
 
-/* arrays and functions decay to pointers when used in expressions */
+/* arrays and functions decay to pointers when used in expressions;
+   pointer types repeat heavily, so the last few are cached */
+/* arrays and functions decay to pointers when used in expressions;
+   the resulting pointer types repeat heavily, so they are cached */
 struct type *
 decay (t)
 struct type *t;
 {
+	static struct type *cache[24];
+	int i;
+
 	if (t == NULL)
 		return NULL;
 	if (t->t_op == T_ARY)
-		return mktype (T_PTR, t->t_tp, 0, NULL, NULL);
-	if (t->t_op == T_FUNC)
+		t = t->t_tp;		/* pointer to the element */
+	else if (t->t_op != T_FUNC)
+		return t;
+	for (i = 0; i < 24 && cache[i] != NULL; ++i)
+		if (cache[i]->t_tp == t)
+			return cache[i];
+	if (i == 24)
 		return mktype (T_PTR, t, 0, NULL, NULL);
-	return t;
+	cache[i] = mktype (T_PTR, t, 0, NULL, NULL);
+	return cache[i];
 }
 
 /* the usual arithmetic conversions, kept K&R-simple */
@@ -150,6 +160,8 @@ int
 tysize (t)
 struct type *t;
 {
+	int op;
+
 	if (t == NULL)
 		return 0;
 	switch (t->t_op) {
@@ -162,15 +174,13 @@ struct type *t;
 	case T_UNION:
 		return t->t_size;
 	}
-	switch (t->t_op & BT_MASK) {
-	case BT_CHAR:
-		return 1;
-	case BT_SHORT:
-	case BT_INT:
-	case BT_VOID:
-		return 2;
-	case BT_LONG:
+	/* the longer types win; fixbt ors BT_INT in implicitly */
+	op = t->t_op & BT_MASK;
+	if (op & BT_LONG)
 		return 4;
-	}
+	if (op & BT_SHORT)
+		return 2;
+	if (op & BT_CHAR)
+		return 1;
 	return 2;
 }

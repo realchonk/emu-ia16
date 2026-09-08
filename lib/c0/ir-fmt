@@ -1,0 +1,123 @@
+# *.symbol
+All symbol names used by the IR, separated by NUL bytes.  A `sym` is
+the 0-based index of a name in this file, in order of first use.
+Mangled names: user labels are "func.label", static locals are
+"func.name", generated labels are ".Ln", string literals are ".sN",
+switch temporaries are ".swN".
+
+# *.ir
+Magic: "CIR\0"
+
+String literals are defined in this file as anonymous static data
+records (".sN"), so the IR is self-contained.
+
+## Misc Stuff
+byte:
+	8bit integer
+word:
+	16bit integer, little endian
+dword:
+	32bit integer, little endian
+sym: word
+	index into the symbol file
+ty: byte
+	The type of an expression, so that c1 knows the width and
+	signedness of every operand:
+	[1:0]	width: 0 = 1 byte, 1 = word, 2 = dword, 3 = block
+	[2]	0 = signed, 1 = unsigned (pointers are unsigned words)
+	If the width is block, a word with the byte count follows the
+	ty byte.  Blocks only appear as the type of "=" and "*".
+	Whenever an operand is narrower than its operation, c1 extends
+	it according to the operand's own ty; arguments in a call are
+	promoted to at least a word.
+
+## Model
+`g` and `l` denote the ADDRESS of an object (a word); `*` loads
+through an address, and "=" stores through one.  Reading a variable
+is `* (g x)`; an array or function name decays to its address by a
+bare `g`/`l`.  Pointer arithmetic has already been scaled to bytes by
+c0.  c1 must not evaluate the right side of &&, || and ?: eagerly
+(the tags below carry these operators; c1 generates the short
+circuit).
+
+## Global Definitions
+
+Data Declaration: "D" flags sym size init? "\x00"
+flags (byte):
+	[1:0]:	storage class
+		0x00: extern	(symbol defined elsewhere)
+		0x01: global	(symbol defined in this file)
+		0x02: static	(defined here, not exported)
+	[2]:	initialized
+size (word):
+	number of bytes
+init: chunk* (exactly `size` bytes; c1 pads with zeros)
+	0x01 word-n		followed by n literal bytes
+	0x02 sym word-addend	a word holding address of sym + addend
+	0x00			end of chunks
+
+Function Definition: "F" flags sym args "\xff\xff" vars "\xff\xff" code "\xff"
+Function Declaration: "F" flags sym "\xff"
+flags (byte):
+	[1:0]:	storage class, see "D"
+	[2]:	definition (with args/vars/code); without it this is a
+		declaration and the rest is omitted
+args (words):
+	The sizes of the parameters in bytes, in declaration order
+vars (words):
+	The sizes of the local auto variables (including hidden switch
+	temporaries), in declaration order; `l` indexes into the
+	concatenation of args and vars
+code (stmts):
+	The body, lowered to statements
+
+## Statements (stmt):
+Return (no value):	"r"
+Return (with value): 	"R" ty expr
+	ty is the function's return type; c1 converts the expression
+	to it
+Label:			"L" sym
+Jump:			"J" sym
+Branch:			"B" true false cond
+	Jump to true (sym) or false (sym), based on cond (expr)
+Expr:			expr
+
+## Expressions (expr):
+Integer:		"i" ty word
+Long:			"I" ty dword
+	chosen by ty, or by the value not fitting a word
+Global Symbol:		"g" ty sym
+	the address of sym (a word, unsigned)
+Local Symbol:		"l" ty byte
+	the address of local slot `byte` (a word, unsigned)
+Unary:			"u" ty op expr
+	op (byte): '-' | '~' | '!'
+Binary:			"b" ty op expr expr
+	op (byte): '+' | '-' | '*' | '/' | '%' | '&' | '|' | '^'
+		| '<' | '>' | 'L' (<=) | 'G' (>=) | 'E' (==) | 'N' (!=)
+		| 'l' (<<) | 'r' (>>) | 'A' (&&) | 'O' (||)
+Ternary:		"?" ty cond true false
+	Only the selected branch is evaluated.
+Call:			"c" ty nargs func args
+	nargs (byte):	number of arguments
+	func (expr):	the function (its address)
+	args (exprs):	the arguments, in source order
+Assignment:		"=" ty dest src
+	dest (expr):	an address expression ("g", "l", "*" forms)
+	src (expr):	the value; for a compound assignment c0 has
+			already emitted dest = dest op src
+Inc/Dec:		"n" ty op when scale lval
+	op (byte):	'+' | '-'
+	when (byte):	0 = postfix, 1 = prefix
+	scale (word):	the step in bytes (1, or the size of the
+			pointed-to object)
+	lval (expr):	an address expression
+Comma:			"," ty expr expr
+	evaluate left, then right; value is the right one
+Dereference:		"*" ty expr
+	the value at the address; ty is the pointee (or a block)
+Address of, casts, member access ".", "->", index "[]" and sizeof
+	do not appear: c0 lowers them into the forms above ("&x" is
+	just the address expression of x, casts retype a node and
+	rely on width reconciliation, "a[i]" is *(a + i*scale), "p->m"
+	is *(p + offset)).
