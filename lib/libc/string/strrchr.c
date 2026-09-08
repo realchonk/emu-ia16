@@ -8,7 +8,7 @@ int		 c;
 	char *l = NULL;
 	for (; *s != '\0'; ++s) {
 		if (*s == c)
-			l = s;
+			l = (char *)s;
 	}
-	return (char *)l;
+	return l;
 }
