@@ -277,6 +277,37 @@ int main(int argc, char *argv[])
 	enter16(cs, ds, shimsel, setup_args(argv + 1));
 }
 
+static int
+xoflags (int oflags)
+{
+	int nflags = 0;
+
+	switch (oflags & 3) {
+	case 0:
+		nflags = O_RDONLY;
+		break;
+	case 1:
+		nflags = O_WRONLY;
+		break;
+	case 2:
+		nflags = O_RDWR;
+		break;
+	default:
+		return 0;
+	}
+
+	if (oflags & 0x0008)
+		nflags |= O_APPEND;
+	if (oflags & 0x0200)
+		nflags |= O_CREAT;
+	if (oflags & 0x0400)
+		nflags |= O_TRUNC;
+	if (oflags & 0x0800)
+		nflags |= O_EXCL;
+
+	return nflags;
+}
+
 int
 sysentry(int ss, uint32_t esp, int no)
 {
@@ -302,7 +333,7 @@ sysentry(int ss, uint32_t esp, int no)
 	case 6:
 		return unlink (text + args[0]);
 	case 7:
-		return open (text + args[0], args[1]);
+		return open (text + args[0], xoflags (args[1]), args[2]);
 	case 8:
 		return creat (text + args[0], args[1]);
 

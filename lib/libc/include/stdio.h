@@ -17,6 +17,7 @@ extern FILE *stdin, *stdout, *stderr;
 
 FILE	*funopen ();
 FILE	*fdopen ();
+FILE	*fopen ();
 size_t	 fread ();
 size_t	 fwrite ();
 int	 fflush ();

@@ -6,6 +6,7 @@ OBJS =	stdio/_printf.o		\
 	stdio/fdopen.o		\
 	stdio/fflush.o		\
 	stdio/fgetc.o		\
+	stdio/fopen.o		\
 	stdio/fprintf.o		\
 	stdio/fputc.o		\
 	stdio/fputs.o		\
