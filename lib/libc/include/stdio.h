@@ -26,6 +26,8 @@ size_t	 fwrite ();
 int	 fflush ();
 int	 fclose ();
 
+void	 setbuf ();
+
 int	 getc ();
 int	 getchar ();
 int	 fgetc ();

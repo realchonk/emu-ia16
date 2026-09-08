@@ -19,6 +19,7 @@ OBJS =	stdio/_printf.o		\
 	stdio/printf.o		\
 	stdio/putchar.o		\
 	stdio/puts.o		\
+	stdio/setbuf.o		\
 	stdio/sprintf.o		\
 	stdio/stdio.o		\
 	stdio/ungetc.o		\
