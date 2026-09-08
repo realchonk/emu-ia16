@@ -7,6 +7,10 @@ void	*memset ();
 void	*memcpy ();
 void	*memmove ();
 
+char	*strcpy ();
+char	*strcat ();
+char	*strchr ();
+char	*strrchr ();
 int	 strcmp ();
 size_t	 strlen ();
 
