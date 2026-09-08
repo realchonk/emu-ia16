@@ -2,5 +2,6 @@ NAME = yacc
 OBJS = y1.o y2.o y3.o y4.o
 
 CFLAGS += -Wno-implicit-int -Wno-return-type -Wno-comment -Wno-missing-parameter-type
+CFLAGS += -DPARSER=\"$./bin/yacc/yaccpar\"
 
 .expand prog
