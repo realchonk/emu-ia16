@@ -1,6 +1,9 @@
 /emu/emu
 /bin/echo/echo
 /bin/hello/hello
+/bin/yacc/yacc
+/bin/yacc/yacc.*
+/bin/yacc/y.tab.c
 *.o
 *.elf
 *.a

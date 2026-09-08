@@ -17,7 +17,26 @@
 # define ACCEPTCODE 8191
 
 	/* sizes and limits */
-#define MEDIUM
+#define SMALL
+
+	/*
+	 * The tiny memory model puts text, data, bss, heap and stack into a
+	 * single 64K segment, so the tables have to stay well below that.
+	 * MEDIUM needs about 48K of tables alone, which overflows the segment
+	 * and makes the 16 bit relocations fail at link time.
+	 */
+# ifdef SMALL
+# define ACTSIZE 3200
+# define MEMSIZE 4000
+# define NSTATES 500
+# define NTERMS 127
+# define NPROD 350
+# define NNONTERM 175
+# define TEMPSIZE 500
+# define CNAMSZ 3000
+# define LSETSIZE 300
+# define WSETSIZE 200
+# endif
 
 # ifdef HUGE
 # define ACTSIZE 12000
