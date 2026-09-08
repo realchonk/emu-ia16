@@ -2,7 +2,7 @@ NAME = cpp
 OBJS = cpp.o cpy.o
 YACC = ${EMU} ${.OBJDIR}/$./bin/yacc/yacc
 
-CFLAGS	+= -g -O0 -Wno-implicit-function-declaration -Wno-char-subscripts
+CFLAGS	+= -Wno-implicit-function-declaration -Wno-char-subscripts
 CFLAGS	+= -Wno-comment -Wno-implicit-int -Wno-return-type -Wno-missing-parameter-type
 CFLAGS	+= -DFLEXNAMES -DBSD2_86 -Di286=1 -Dunix
 
