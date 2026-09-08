@@ -1,5 +1,8 @@
 .SUBDIRS: libc
 
+PREFIX ?= /
+.EXPORTS: PREFIX
+
 OBJS = crt0.o
 
 all-extra: ${OBJS}

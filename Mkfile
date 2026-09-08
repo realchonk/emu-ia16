@@ -2,6 +2,10 @@
 
 include config.mk
 
+EMU = ${.OBJDIR}/$./emu/emu
+DESTDIR ?= ${.OBJDIR}/$./_install
+.EXPORTS: EMU DESTDIR
+
 .asm.o:
 	${AS} -felf32 -o $@ $<
 

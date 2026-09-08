@@ -1,8 +1,13 @@
+BIN := emu
 
-all: emu
+all: ${BIN}
+
+install: all
+	mkdir -p ${DESTDIR}
+	cp -f ${BIN:F} ${DESTDIR}/
 
 clean:
-	rm -f emu *.core
+	rm -f ${BIN:F} *.core
 
 emu: emu.c shim.S
 	${HOSTCC} -o $@ emu.c shim.S -no-pie ${HOSTCFLAGS} ${HOSTLDFLAGS}

@@ -4,7 +4,8 @@
 		hello	\
 		yacc
 
+PREFIX ?= /
 LIBDEPS = $./lib/crt0.o $./lib/user.x $./lib/libc/libc.a
-.EXPORTS: LIBDEPS
+.EXPORTS: PREFIX LIBDEPS
 
 .expand dir

@@ -5,10 +5,18 @@
 ## Build ${.SUBDIRS:J, }
 all: ${.SUBDIRS}
 
+## Install ${.SUBDIRS:J, }
+install: ${.SUBDIRS:=/install}
+
+## Clean ${.SUBDIRS:J, }
 clean: ${.SUBDIRS:=/clean}
 
 .if target(all-extra)
 all: all-extra
+.endif
+
+.if target(install-extra)
+install: install-extra
 .endif
 
 .if target(clean-extra)
@@ -21,16 +29,25 @@ clean: clean-extra
 .template lib
 .DEFAULT: all
 
-LIB = lib${NAME}.a
+LIB := lib${NAME}.a
 
+## Build ${LIB}
 all: ${LIB}
 
-clean:
-	rm -f ${LIB} *.o ${.SUBDIRS:=/*.o}
+## Install ${LIB} into ${PREFIX}/lib
+install: ${LIB}
+	mkdir -p ${DESTDIR}${PREFIX}/lib
+	cp -f ${LIB:F} ${DESTDIR}${PREFIX}/lib/
 
+## Remove build artifacts
+clean:
+	rm -f ${LIB:F} *.o ${.SUBDIRS:=/*.o}
+
+## Disassemble ${LIB}
 dump: ${LIB}
 	${OD} -ds -m i8086 -Mintel $< | bat -l asm
 
+## Compute the size for ${LIB}
 size: ${LIB}
 	${SIZE} -t $<
 
@@ -44,22 +61,33 @@ ${LIB}: ${OBJS}
 .DEFAULT: all
 
 BIN := ${NAME}
+
+## Program Arguments for `run`
 ARGS ?=
 
 ## Build ${NAME} program
 all: ${BIN}
 
+## Install ${NAME} into ${PREFIX}/bin
+install: ${BIN}
+	mkdir -p ${DESTDIR}${PREFIX}/bin
+	cp -f ${BIN:F} ${DESTDIR}${PREFIX}/bin/
+
+## Remove build artifacts
+clean:
+	rm -f ${BIN} *.o *.elf
+
+## Run ${NAME} with $${ARGS}
 run: ${BIN} $./emu/emu
 	$./emu/emu ${BIN:F} ${ARGS}
 
+## Disassemble ${NAME}
 dump: ${NAME}.elf
 	${OD} -ds -m i8086 -Mintel $< | bat -l asm
 
+## Compute the size for ${NAME}
 size: ${NAME}.elf
 	${SIZE} $<
-
-clean:
-	rm -f ${BIN} *.o *.elf
 
 .if !target(${NAME}.elf)
 ${NAME}.elf: ${OBJS} ${LIBDEPS}
