@@ -2,10 +2,20 @@
 
 OBJS =	stdio/_printf.o		\
 	stdio/dprintf.o		\
+	stdio/fclose.o		\
+	stdio/fdopen.o		\
+	stdio/fflush.o		\
+	stdio/fprintf.o		\
+	stdio/fputc.o		\
+	stdio/fputs.o		\
+	stdio/fread.o		\
+	stdio/funopen.o		\
+	stdio/fwrite.o		\
 	stdio/printf.o		\
 	stdio/putchar.o		\
 	stdio/puts.o		\
 	stdio/sprintf.o		\
+	stdio/stdio.o		\
 	stdlib/calloc.o		\
 	stdlib/errno.o		\
 	stdlib/exit.o		\
@@ -16,6 +26,9 @@ OBJS =	stdio/_printf.o		\
 	string/strlen.o		\
 	unistd/_exit.o		\
 	unistd/brk.o		\
+	unistd/close.o		\
+	unistd/lseek.o		\
+	unistd/read.o		\
 	unistd/write.o		\
 
 all: libc.a

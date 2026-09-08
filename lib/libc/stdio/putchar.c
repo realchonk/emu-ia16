@@ -5,5 +5,5 @@ int
 putchar (ch)
 int ch;
 {
-	return write (1, &ch, 1) == 1 ? (unsigned char)ch : EOF;
+	return fwrite (&ch, 1, 1, stdout) == 1 ? (unsigned char)ch : EOF;
 }

@@ -293,6 +293,12 @@ sysentry(int ss, uint32_t esp, int no)
 		_exit(args[0]);
 	case 2:
 		return _write (args[0], text + args[1], args[2]);
+	case 3:
+		return read (args[0], text + args[1], args[2]);
+	case 4:
+		return close (args[0]);
+	case 5:
+		return lseek (args[0], args[1] | (args[2] << 16), args[3]);
 
 	default:
 		dprintf(STDERR_FILENO, "syscall%d(%d, %d, %d, %d)\n", no, args[0], args[1], args[2], args[3]);
