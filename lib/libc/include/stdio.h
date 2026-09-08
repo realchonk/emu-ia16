@@ -21,10 +21,14 @@ size_t	 fwrite ();
 int	 fflush ();
 int	 fclose ();
 
+int	 getc ();
+int	 getchar ();
+int	 fgetc ();
 int	 fputc ();
-int	 putchar ();
 int	 fputs ();
+int	 putchar ();
 int	 puts ();
+
 int	 printf ();
 int	 dprintf ();
 int	 fprintf ();

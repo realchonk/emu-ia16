@@ -5,12 +5,14 @@ OBJS =	stdio/_printf.o		\
 	stdio/fclose.o		\
 	stdio/fdopen.o		\
 	stdio/fflush.o		\
+	stdio/fgetc.o		\
 	stdio/fprintf.o		\
 	stdio/fputc.o		\
 	stdio/fputs.o		\
 	stdio/fread.o		\
 	stdio/funopen.o		\
 	stdio/fwrite.o		\
+	stdio/getchar.o		\
 	stdio/printf.o		\
 	stdio/putchar.o		\
 	stdio/puts.o		\
@@ -20,9 +22,11 @@ OBJS =	stdio/_printf.o		\
 	stdlib/errno.o		\
 	stdlib/exit.o		\
 	stdlib/malloc.o		\
+	string/memcmp.o		\
 	string/memcpy.o		\
 	string/memmove.o	\
 	string/memset.o		\
+	string/strcmp.o		\
 	string/strlen.o		\
 	unistd/_exit.o		\
 	unistd/brk.o		\
