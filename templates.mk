@@ -77,9 +77,11 @@ install: ${BIN}
 clean:
 	rm -f ${BIN} *.o *.elf
 
+.if !target(run)
 ## Run ${NAME} with $${ARGS}
-run: ${BIN} $./emu/emu
-	$./emu/emu ${BIN:F} ${ARGS}
+run: ${BIN} ${EMU}
+	${EMU:F} ${BIN:F} ${ARGS}
+.endif
 
 ## Disassemble ${NAME}
 dump: ${NAME}.elf
