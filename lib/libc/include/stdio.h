@@ -6,6 +6,7 @@
 
 typedef struct _FILE {
 	void	 *cookie;
+	int	  peekc;
 	int	(*readfn)();
 	int	(*writefn)();
 	long	(*seekfn)();
@@ -28,6 +29,7 @@ int	 fputc ();
 int	 fputs ();
 int	 putchar ();
 int	 puts ();
+int	 ungetc ();
 
 int	 printf ();
 int	 dprintf ();

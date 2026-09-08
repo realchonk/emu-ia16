@@ -18,6 +18,7 @@ OBJS =	stdio/_printf.o		\
 	stdio/puts.o		\
 	stdio/sprintf.o		\
 	stdio/stdio.o		\
+	stdio/ungetc.o		\
 	stdlib/calloc.o		\
 	stdlib/ctype.o		\
 	stdlib/errno.o		\

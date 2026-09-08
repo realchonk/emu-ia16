@@ -20,6 +20,7 @@ long	(*seekfn)();
 		return NULL;
 
 	file->cookie	= cookie;
+	file->peekc	= EOF;
 	file->readfn	= readfn;
 	file->writefn	= writefn;
 	file->seekfn	= seekfn;
