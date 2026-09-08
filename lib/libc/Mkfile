@@ -19,6 +19,7 @@ OBJS =	stdio/_printf.o		\
 	stdio/sprintf.o		\
 	stdio/stdio.o		\
 	stdlib/calloc.o		\
+	stdlib/ctype.o		\
 	stdlib/errno.o		\
 	stdlib/exit.o		\
 	stdlib/malloc.o		\
