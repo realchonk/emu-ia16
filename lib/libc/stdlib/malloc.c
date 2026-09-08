@@ -47,6 +47,11 @@ size_t num;
 		if (l != NULL && map_end (l) == sbrk (0)) {
 			if (sbrk (anum - l->len) == (void *)-1)
 				return NULL;
+			/* l is the last block, so unlink it from the tail */
+			if (l->prev != NULL)
+				l->prev->next = NULL;
+			else
+				free_list = NULL;
 			l->len = anum;
 			return (char *)l + sizeof (size_t);
 		}
@@ -59,24 +64,30 @@ size_t num;
 		return (char *)ptr + sizeof (size_t);
 	}
 
-	/* if the block found is bigger than requested, split it up */
-	if (m->len >= num + sizeof (struct map) * 2 + 4) {
-		anum = num + sizeof (struct map);
-		n = (void *)((char *)m + anum);
-		n->prev = m->prev;
-		n->next = n->next;
+	/*
+	 * If the block found is big enough to also hold a free block,
+	 * split it and let the remainder n take m's place in the free
+	 * list.  Otherwise hand out all of m and drop it from the list.
+	 * n is what m's predecessor has to point to afterwards.
+	 */
+	if (m->len >= anum + sizeof (struct map) + 2) {
+		n = (struct map *)((char *)m + anum);
 		n->len = m->len - anum;
+		n->prev = m->prev;
+		n->next = m->next;
+		if (n->next != NULL)
+			n->next->prev = n;
 	} else {
 		anum = m->len;
 		n = m->next;
+		if (n != NULL)
+			n->prev = m->prev;
 	}
 
-	if (m == free_list)
+	if (m->prev != NULL)
+		m->prev->next = n;
+	else
 		free_list = n;
-	if (n->prev != NULL)
-		n->prev->next = n;
-	if (n->next != NULL)
-		n->next->prev = n;
 
 	m->len = anum;
 	return (char *)m + sizeof (size_t);
