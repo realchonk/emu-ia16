@@ -13,7 +13,10 @@ typedef struct _FILE {
 	int	(*closefn)();
 } FILE;
 
-extern FILE *stdin, *stdout, *stderr;
+extern	FILE *__stdio_getstdx ();
+#define stdin	__stdio_getstdx (0)
+#define stdout	__stdio_getstdx (1)
+#define stderr	__stdio_getstdx (2)
 
 FILE	*funopen ();
 FILE	*fdopen ();
