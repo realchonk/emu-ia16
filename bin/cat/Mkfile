@@ -1,0 +1,3 @@
+NAME = cat
+OBJS = cat.o
+.expand prog

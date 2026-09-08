@@ -1,4 +1,7 @@
-.SUBDIRS: hello echo yacc
+.SUBDIRS:	cat	\
+		echo	\
+		hello	\
+		yacc
 
 LIBDEPS = $./lib/crt0.o $./lib/user.x $./lib/libc/libc.a
 .EXPORTS: LIBDEPS
