@@ -1,0 +1,4 @@
+cpp
+y.tab.c
+*.o
+*.core
