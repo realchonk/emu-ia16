@@ -27,6 +27,7 @@ int	 getchar ();
 int	 fgetc ();
 int	 fputc ();
 int	 fputs ();
+int	 putc ();
 int	 putchar ();
 int	 puts ();
 int	 ungetc ();
