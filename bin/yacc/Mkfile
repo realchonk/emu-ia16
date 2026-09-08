@@ -1,0 +1,4 @@
+NAME = yacc
+OBJS = y1.o y2.o y3.o y4.o
+
+.expand prog
