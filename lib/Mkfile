@@ -1,4 +1,4 @@
-.SUBDIRS: libc
+.SUBDIRS: libc cpp
 
 PREFIX ?= /
 .EXPORTS: PREFIX

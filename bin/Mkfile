@@ -1,5 +1,4 @@
 .SUBDIRS:	cat	\
-		cpp	\
 		echo	\
 		hello	\
 		yacc
