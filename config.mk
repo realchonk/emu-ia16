@@ -9,6 +9,7 @@ CC	?= ia16-elf-gcc
 LD	?= ${CC} ${.OBJDIR}/$./lib/crt0.o
 OC	?= ia16-elf-objcopy
 OD	?= ia16-elf-objdump
+SIZE	?= ia16-elf-size
 ASFLAGS	+=
 CFLAGS	+= -Os -ansi -ffreestanding -masm=intel -march=i286
 CFLAGS	+= -mcmodel=tiny -mprotected-mode
@@ -16,4 +17,4 @@ CFLAGS	+= -Wall -Wextra -isystem $./lib/libc/include
 LDFLAGS	+= -s -L${.OBJDIR}/$./lib/libc -nostdlib -lgcc -lc
 LDFLAGS	+= -T $./lib/user.x -Wl,--no-warn-rwx-segments
 
-.EXPORTS: AS AR CC LD OC OD ASFLAGS CFLAGS LDFLAGS
+.EXPORTS: AS AR CC LD OC OD SIZE ASFLAGS CFLAGS LDFLAGS

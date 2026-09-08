@@ -34,6 +34,9 @@ run: ${BIN} $./emu/emu
 dump: ${NAME}.elf
 	${OD} -ds -m i8086 -Mintel $< | bat -l asm
 
+size: ${NAME}.elf
+	${SIZE} $<
+
 clean:
 	rm -f ${BIN} *.o *.elf
 
