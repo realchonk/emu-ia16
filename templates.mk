@@ -1,3 +1,18 @@
+## "extra" rules
+.template extra
+.if target(all-extra)
+all: all-extra
+.endif
+
+.if target(clean-extra)
+clean: clean-extra
+.endif
+
+.if target(install-extra)
+install: install-extra
+.endif
+.endt
+
 ## Directory Template
 .template dir
 .DEFAULT: all
@@ -11,18 +26,7 @@ install: ${.SUBDIRS:=/install}
 ## Clean ${.SUBDIRS:J, }
 clean: ${.SUBDIRS:=/clean}
 
-.if target(all-extra)
-all: all-extra
-.endif
-
-.if target(install-extra)
-install: install-extra
-.endif
-
-.if target(clean-extra)
-clean: clean-extra
-.endif
-
+.expand extra
 .endt
 
 ## Library Template
@@ -54,6 +58,7 @@ size: ${LIB}
 ${LIB}: ${OBJS}
 	${AR} rcs $@ ${OBJS:F}
 
+.expand extra
 .endt
 
 ## Program Template
@@ -99,4 +104,5 @@ ${NAME}.elf: ${OBJS} ${LIBDEPS}
 ${BIN}: ${NAME}.elf
 	${OC} -O binary $< $@
 
+.expand extra
 .endt
