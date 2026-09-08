@@ -1,7 +1,9 @@
 #ifndef FILE_UNISTD_H
 #define FILE_UNISTD_H
 #include <stddef.h>
+#include <cdefs.h>
 
+__dead
 void	 _exit ();
 
 void	 close ();

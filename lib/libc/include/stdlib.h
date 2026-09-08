@@ -1,7 +1,9 @@
 #ifndef FILE_STDLIB_H
 #define FILE_STDLIB_H
 #include <stddef.h>
+#include <cdefs.h>
 
+__dead
 void	 exit ();
 
 void	*malloc ();
