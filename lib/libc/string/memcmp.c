@@ -7,5 +7,5 @@ size_t		 n;
 {
 	const unsigned char *s1 = p1, *s2 = p2;
 	for (; n != 0 && *s1 == *s2; ++s1, ++s2, --n);
-	return *s1 - *s2;
+	return n > 0 ? *s1 - *s2 : 0;
 }
