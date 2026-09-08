@@ -3,11 +3,14 @@
 #include <stddef.h>
 
 void	 _exit ();
+
+void	 close ();
+int	 unlink ();
 int	 write ();
 int	 read ();
 long	 lseek ();
+
 int	 brk ();
-void	 close ();
 void	*sbrk ();
 
 #endif /* FILE_UNISTD_H */

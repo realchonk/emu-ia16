@@ -33,8 +33,11 @@ OBJS =	stdio/_printf.o		\
 	unistd/_exit.o		\
 	unistd/brk.o		\
 	unistd/close.o		\
+	unistd/creat.o		\
 	unistd/lseek.o		\
+	unistd/open.o		\
 	unistd/read.o		\
+	unistd/unlink.o		\
 	unistd/write.o		\
 
 all: libc.a
