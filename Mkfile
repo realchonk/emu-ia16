@@ -2,6 +2,9 @@
 
 include config.mk
 
+.asm.o:
+	${AS} -felf32 -o $@ $<
+
 .c.o:
 	${CC} -c -o $@ $< ${CFLAGS}
 

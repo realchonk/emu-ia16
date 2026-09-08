@@ -7,10 +7,4 @@ all-extra: ${OBJS}
 clean-extra:
 	rm -f *.o
 
-.c.o:
-	${CC} -c -o $@ $< ${CFLAGS}
-
-.asm.o:
-	${AS} -felf32 -o $@ $<
-
 .expand dir
