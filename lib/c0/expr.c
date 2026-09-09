@@ -560,8 +560,10 @@ struct node *f, *args;
 			for (sp = sp->s_tp->t_memb; sp != NULL;
 			     sp = sp->s_next)
 				++want;
-			if (n != want)
-				typerr ("wrong number of arguments (want %d, got %d)",
+			/* more arguments than parameters is legal:
+			   K&R varargs (_varargs.h) */
+			if (n < want)
+				typerr ("too few arguments (want %d, got %d)",
 					want, n);
 		}
 	}
@@ -657,4 +659,43 @@ nlocal (sp)
 struct symb *sp;
 {
 	return mknode (O_NAME, sp->s_tp, (struct node *) sp, NULL);
+}
+
+/*
+ * Nodes normally die with their statement; the two expressions that
+ * outlive one (the for step and the switch temporary) are copied into
+ * this small pool, so the main pool can be recycled per statement.
+ */
+#define	NHELD	48
+
+static struct node	hpool[NHELD];
+static int		nhpool;
+
+struct node *
+holdcopy (e)
+struct node *e;
+{
+	struct node *n;
+
+	if (e == NULL)
+		return NULL;
+	if (nhpool >= NHELD)
+		error ("loop too complex");
+	n = &hpool[nhpool++];
+	n->n_op = e->n_op;
+	n->n_tp = e->n_tp;
+	n->n_val = e->n_val;
+	/* some slots hold symbols, not nodes */
+	n->n_l = e->n_op == O_NAME ? e->n_l : holdcopy (e->n_l);
+	n->n_r = e->n_op == O_MEMBER || e->n_op == O_ARROW
+		? e->n_r : holdcopy (e->n_r);
+	if (e->n_op == O_COND)		/* the else branch lives in n_val */
+		n->n_val = (int) holdcopy ((struct node *) (int) e->n_val);
+	return n;
+}
+
+void
+held_reset ()
+{
+	nhpool = 0;
 }

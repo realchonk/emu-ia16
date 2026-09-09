@@ -65,6 +65,13 @@ char *name;
 	return scopefind (globals, name);
 }
 
+/*
+ * The locals of the function being compiled, in slot order: `l'
+ * indices are assigned at install time, parameters first.
+ */
+struct symb	*ltab[NLOC];
+int		 nlocidx, nargsloc;
+
 struct symb *
 install (name, sc)
 char *name;
@@ -76,6 +83,12 @@ int sc;
 	s->s_name = name;
 	s->s_sc = sc;
 	if (nscope > 0) {
+		if (curfunc != NULL && sc != SC_STATIC
+		    && sc != SC_TYPEDEF) {
+			if (nlocidx >= NLOC)
+				error ("too many locals");
+			ltab[nlocidx++] = s;
+		}
 		s->s_next = scopes[nscope];
 		scopes[nscope] = s;
 	} else {
@@ -109,20 +122,26 @@ blkpush ()
 	scopes[nscope] = NULL;
 }
 
+/*
+ * The symbols stay allocated until the function ends: their types
+ * are written into the vars list at fdefend.  Shadowing chains are
+ * simply unlinked.
+ */
 void
 blkpop ()
 {
-	struct symb *s, *next;
-
 	if (nscope <= 0)
 		return;
-	for (s = scopes[nscope]; s != NULL; s = next) {
-		next = s->s_next;
-		s->s_next = sfreelist;
-		sfreelist = s;
-	}
 	scopes[nscope] = NULL;
 	--nscope;
+}
+
+void
+freesymb (s)
+struct symb *s;
+{
+	s->s_next = sfreelist;
+	sfreelist = s;
 }
 
 /*
@@ -733,32 +752,13 @@ struct node *init;
 	if (nscope == 0) {
 		emit_data (name, sc, tp, init);
 		expr_reset ();		/* the init nodes are consumed */
-	} else if (sc == SC_STATIC)
+	} else if (sc == SC_STATIC) {
 		emit_static (sp, tp, init);
-}
-
-/*
- * Collect the locals of the innermost scope in declaration order
- * (parameters first, then autos; statics are emitted as globals and
- * are skipped).  Fills tab, returns the count.
- */
-int
-getlocals (tab)
-struct symb *tab[];
-{
-	struct symb *s;
-	int i, n;
-
-	n = 0;
-	for (s = scopes[nscope]; s != NULL; s = s->s_next)
-		if (s->s_sc != SC_STATIC && s->s_sc != SC_TYPEDEF)
-			tab[n++] = s;
-	for (i = 0; i < n / 2; ++i) {
-		s = tab[i];
-		tab[i] = tab[n - 1 - i];
-		tab[n - 1 - i] = s;
+	} else if (init != NULL && init->n_op != O_ILIST) {
+		/* an initialized auto becomes an assignment in the code */
+		emexpr (nasgn ('=', nlocal (sp), init));
+		expr_reset ();
 	}
-	return n;
 }
 
 /* count the elements of an initializer list */

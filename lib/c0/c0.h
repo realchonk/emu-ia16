@@ -17,35 +17,34 @@ extern int	firfd, symfd;
  */
 
 /* lex.c */
-#define	NNAME	3584			/* identifier arena, bytes */
-#define	NINT	512			/* interned identifiers */
-#define	NSDATA	1280			/* string literal bytes */
+#define	NNAME	4096			/* identifier arena, bytes */
+#define	NINT	448			/* interned identifiers */
+#define	NSDATA	2560			/* string literal bytes */
 
 /* type.c */
 #define	NTYPE	256			/* type pool entries */
 
 /* decl.c */
-#define	NSYMB	416			/* symbol pool entries */
+#define	NSYMB	640			/* symbol pool entries */
 #define	NSCOPE	16			/* block nesting depth */
 #define	NSU	16			/* struct/union nesting depth */
 #define	NDCL	184			/* declarator tree nodes */
 #define	NDSPEC	80			/* type name specifiers */
 
 /* expr.c */
-#define	NNODE	704			/* expression tree nodes */
+#define	NNODE	576			/* expression tree nodes */
 #define	NLCON	16			/* long constants (O_LCON) */
 
 /* stmt.c */
-#define	NSREC	448			/* lowered statements per function */
-#define	NCASE	60			/* case labels per file */
+#define	NCASE	96			/* case labels per file */
 #define	NLAB	64			/* labels per function */
 #define	NNEST	32			/* nested loops, ifs, switches */
 #define	NSW	8			/* nested switches */
 #define	NLOC	128			/* params and locals per function */
-#define	NLABCH	1152			/* label name arena, bytes per function */
+#define	NLABCH	512			/* user label names, bytes */
 
 /* emit.c */
-#define	NSYMNM	384			/* names in the symbol file */
+#define	NSYMNM	512			/* names in the symbol file */
 #define	NNAMEAR	1024			/* generated names, bytes */
 #define	NSTRDEF	96			/* distinct string literals */
 #define	NSTATIC	48			/* static locals */
@@ -224,29 +223,11 @@ struct dspec {
 	struct type	*p_tp;
 };
 
-/* statement records: the body lowered to jumps and branches (stmt.c) */
+/* switch cases, collected until the body is done (stmt.c) */
 struct swcase {
 	struct swcase	*next;
 	int		 val;
-	char		*lab;
-};
-
-struct srec {
-	int		 kind;		/* S_* */
-	union {
-		struct {			/* S_EXPR, S_RET(V), S_LABEL,
-					   S_JUMP, S_BR */
-			struct node	*e;	/* expression / condition */
-			char		*lab;	/* label / true label */
-			char		*lf;	/* S_BR false label */
-		} s;
-		struct {			/* S_SW */
-			struct node	*t;	/* the switch temporary */
-			struct swcase	*cases;
-			char		*lf;	/* end label (shared with s) */
-			char		*dflt;	/* default label or NULL */
-		} w;
-	} u;
+	int		 lab;		/* generated label number */
 };
 
 #define	S_EXPR		0
@@ -291,8 +272,8 @@ struct dcl	*dstar (), *dptrn (), *dchain (), *dname (), *dfunc (),
 		 *dary ();
 struct dspec	*tn_bt (), *tn_td (), *tn_su (), *tn_cat ();
 char		*dclname ();
-int		 curd_sc (), getlocals (), strnlen ();
-void		 dcl_reset (), sc_sclass (), sc_type (),
+int		 curd_sc (), strnlen ();
+void		 dcl_reset (), freesymb (), sc_sclass (), sc_type (),
 		 sc_const (), sc_su (), sc_td (), member (), bindparam (),
 		 dclinst (), chkinit (), blkpush (), blkpop ();
 
@@ -301,9 +282,9 @@ struct node	*nname (), *ncon (), *nstr (), *nbina (), *nlog (),
 		 *nasgn (), *ncond (), *nun (), *naddr (), *ninc (),
 		 *nindex (), *nmember (), *ncall (), *ncast (), *ncomma (),
 		 *nsize (), *ilist (), *exproper (), *nconst (), *nlocal (),
-		 *nstrcat ();
+		 *nstrcat (), *holdcopy ();
 long		 fold ();
-void		 expr_reset ();
+void		 expr_reset (), held_reset ();
 
 /* stmt.c */
 extern struct symb *curfunc;
@@ -315,8 +296,15 @@ void		 sif (), sifend (), selse (), sifendelse (), swhile (),
 		 swhileend (), sdo (), sdoend (), sfor (), sforend (),
 		 sswitch (), sswitchend ();
 
+/* the locals of the function being compiled, in slot order */
+extern struct symb *ltab[];
+extern int	 nlocidx, nargsloc;
+
 /* emit.c */
-void	 emit_data (), emit_fdecl (), emit_static (), emit_func ();
+void	 emit_data (), emit_fdecl (), emit_static ();
+void	 emit_fhead (), emit_ftail ();
+void	 emexpr ();		 /* write the bytes of an expression */
+void	 emlab (), emjump (), embr (), emret (), emswch ();
 char	*numstr ();		 /* append a decimal number to a string */
 
 #endif /* FILE_C0_H */

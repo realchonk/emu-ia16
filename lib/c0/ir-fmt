@@ -19,7 +19,9 @@ word:
 dword:
 	32bit integer, little endian
 sym: word
-	index into the symbol file
+	index into the symbol file; if the high bit is set, the low
+	15 bits are a generated label number (".LN") and the name is
+	not in the symbol file
 ty: byte
 	The type of an expression, so that c1 knows the width and
 	signedness of every operand:
@@ -56,20 +58,22 @@ init: chunk* (exactly `size` bytes; c1 pads with zeros)
 	0x02 sym word-addend	a word holding address of sym + addend
 	0x00			end of chunks
 
-Function Definition: "F" flags sym args "\xff\xff" vars "\xff\xff" code "\xff"
+Function Definition: "F" flags sym code "\xff" args "\xff\xff" vars "\xff\xff"
 Function Declaration: "F" flags sym "\xff"
 flags (byte):
 	[1:0]:	storage class, see "D"
-	[2]:	definition (with args/vars/code); without it this is a
-		declaration and the rest is omitted
-args (words):
-	The sizes of the parameters in bytes, in declaration order
-vars (words):
-	The sizes of the local auto variables (including hidden switch
-	temporaries), in declaration order; `l` indexes into the
-	concatenation of args and vars
+	[2]:	definition (with code and the lists); without it this
+		is a declaration and the rest is omitted
 code (stmts):
-	The body, lowered to statements
+	The body, streamed in source order, lowered to statements
+args (words):
+	The sizes of the parameters in bytes, in declaration order;
+	the code comes first, so that c0 can write it as it parses
+vars (words):
+	The sizes of the local auto variables (including hidden
+	switch temporaries), in declaration order; `l` indexes into
+	the concatenation of args and vars, assigned in declaration
+	order as the code is parsed
 
 ## Statements (stmt):
 Return (no value):	"r"

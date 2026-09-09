@@ -26,11 +26,10 @@ static struct symb *sttab[NSTATIC];
 static char	 *stname[NSTATIC];
 static int	 nstatic;
 
-/* the locals of the function being emitted (params first) */
-static struct symb **ltab;
-static int	 nltab;
+/* ltab/nlocidx/nargsloc come from decl.c/stmt.c */
 
-static void	emexpr (), emaddr (), embin (), emit_init ();
+void		emexpr ();
+static void	emaddr (), embin (), emit_init ();
 
 /* ---------------- output helpers ---------------- */
 
@@ -467,7 +466,6 @@ struct node *init;
 {
 	int flags = sc == SC_STATIC ? 2 : sc == SC_EXTERN ? 0 : 1;
 
-	nltab = 0;			/* no locals in this context */
 	if (init != NULL)
 		flags |= 4;
 	wbyte ('D');
@@ -554,7 +552,7 @@ struct symb *sp;
 {
 	int i;
 
-	for (i = 0; i < nltab; ++i)
+	for (i = 0; i < nlocidx; ++i)
 		if (ltab[i] == sp) {
 			wbyte ('l');
 			wtyaddr ();
@@ -691,7 +689,7 @@ struct node *e;
  * (casts); nested operands keep their own types, and c1 reconciles
  * the widths.
  */
-static void
+void
 emexpr (e, oty)
 struct node *e;
 struct type *oty;
@@ -833,91 +831,120 @@ struct type *oty;
 /* ---------------- functions ---------------- */
 
 void
-emit_func (name, sc, tp, recs, nrecs, tab, ntab)
+emit_fhead (name, sc)
 char *name;
 int sc;
-struct type *tp;
-struct srec *recs;
-int nrecs;
-struct symb *tab[];
-int ntab;
 {
-	struct srec *r;
-	struct swcase *c;
-	struct symb *p;
-	int i, nargs, flags;
-
-	ltab = tab;
-	nltab = ntab;
-
-	flags = (sc == SC_STATIC ? 2 : 1) | 4;
 	wbyte ('F');
-	wbyte (flags);
+	wbyte ((sc == SC_STATIC ? 2 : 1) | 4);
 	wsym (name);
+}
 
-	nargs = 0;
-	for (p = tp->t_memb; p != NULL; p = p->s_next)
-		++nargs;
-	for (i = 0; i < nargs; ++i)
-		wword (tysize (tab[i]->s_tp));
-	wbyte (0xff);
-	wbyte (0xff);
-	for (; i < ntab; ++i)
-		wword (tysize (tab[i]->s_tp));
-	wbyte (0xff);
-	wbyte (0xff);
+void
+emit_ftail (tp)
+struct type *tp;
+{
+	int i;
 
-	for (i = 0; i < nrecs; ++i) {
-		r = &recs[i];
-		switch (r->kind) {
-		case S_EXPR:
-			emexpr (r->u.s.e, NULL);
-			break;
-		case S_RET:
-			wbyte ('r');
-			break;
-		case S_RETV:
-			wbyte ('R');
-			wty (tp->t_tp, tysize (tp->t_tp));
-			emexpr (r->u.s.e, NULL);
-			break;
-		case S_LABEL:
-			wbyte ('L');
-			wsym (r->u.s.lab);
-			break;
-		case S_JUMP:
-			wbyte ('J');
-			wsym (r->u.s.lab);
-			break;
-		case S_BR:
-			wbyte ('B');
-			wsym (r->u.s.lab);
-			wsym (r->u.s.lf);
-			emexpr (r->u.s.e, NULL);
-			break;
-		case S_SW:
-			for (c = r->u.w.cases; c != NULL; c = c->next) {
-				wbyte ('B');
-				wsym (c->lab);
-				if (c->next != NULL)
-					wsym (c->next->lab);
-				else if (r->u.w.dflt != NULL)
-					wsym (r->u.w.dflt);
-				else
-					wsym (r->u.s.lf);
-				wbyte ('b');
-				wty (btype (BT_INT), 2);
-				wbyte ('E');
-				emexpr (r->u.w.t, NULL);
-				wconst ((long) c->val, btype (BT_INT));
-			}
-			if (r->u.w.dflt != NULL) {
-				wbyte ('J');
-				wsym (r->u.w.dflt);
-			}
-			break;
-		}
+	(void) tp;
+	wbyte (0xff);			/* end of code */
+	for (i = 0; i < nargsloc; ++i)
+		wword (tysize (ltab[i]->s_tp));
+	wbyte (0xff);
+	wbyte (0xff);
+	for (; i < nlocidx; ++i)
+		wword (tysize (ltab[i]->s_tp));
+	wbyte (0xff);
+	wbyte (0xff);
+}
+
+/*
+ * A generated label is written as a sym word with the high bit set:
+ * c1 reads the low 15 bits as the label number.  No name, no symbol
+ * file entry.
+ */
+void
+wlab (lab)
+int lab;
+{
+	wword (0x8000 | lab);
+}
+
+/* label, jump, branch, return, switch chain: the statement forms */
+void
+emlab (lab)
+int lab;
+{
+	wbyte ('L');
+	wlab (lab);
+}
+
+void
+emjump (lab)
+int lab;
+{
+	wbyte ('J');
+	wlab (lab);
+}
+
+/* a user label: written as a plain symbol name */
+void
+emusym (lab, kind)
+char *lab;
+int kind;			/* 'L' or 'J' */
+{
+	wbyte (kind);
+	wsym (lab);
+}
+
+void
+embr (lt, lf, cond)
+int lt, lf;
+struct node *cond;
+{
+	wbyte ('B');
+	wlab (lt);
+	wlab (lf);
+	emexpr (cond, NULL);
+}
+
+void
+emret (rt, e)
+struct type *rt;
+struct node *e;
+{
+	if (e == NULL) {
+		wbyte ('r');
+		return;
 	}
-	wbyte (0xff);
-	flushstrings ();
+	wbyte ('R');
+	wty (rt, tysize (rt));
+	emexpr (e, NULL);
+}
+
+void
+emswch (t, cases, dflt, endlab)
+struct node *t;
+struct swcase *cases;
+int dflt, endlab;
+{
+	struct swcase *c;
+
+	for (c = cases; c != NULL; c = c->next) {
+		wbyte ('B');
+		wlab (c->lab);
+		if (c->next != NULL)
+			wlab (c->next->lab);
+		else if (dflt != 0)
+			wlab (dflt);
+		else
+			wlab (endlab);
+		wbyte ('b');
+		wty (btype (BT_INT), 2);
+		wbyte ('E');
+		emexpr (t, NULL);
+		wconst ((long) c->val, btype (BT_INT));
+	}
+	if (dflt != 0)
+		emjump (dflt);
 }

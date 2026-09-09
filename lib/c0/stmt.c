@@ -2,12 +2,14 @@
 #include "c0.h"
 
 /*
- * stmt.c -- function definitions and statement lowering for c0.  As
- * the body is parsed, statements are recorded in a flat list of
- * records: control flow (if, while, do, for, switch) is lowered into
- * labels, jumps and branches, with break and continue resolving to the
- * innermost loop or switch.  fdefend hands the record list, the
- * parameters and the locals to emit.c, which serializes the function.
+ * stmt.c -- function definitions and statement lowering for c0.  The
+ * IR is streamed: every statement writes its bytes as it is parsed,
+ * and control flow (if, while, do, for, switch) is lowered into
+ * labels, jumps and branches referencing symbols, which are
+ * position-independent.  A switch dispatches through a compare chain
+ * placed after its body and jumped over on entry.  The F record is
+ * finished in fdefend, with the parameter and local sizes trailing
+ * the code (see ir-fmt).
  */
 
 
@@ -19,60 +21,30 @@ static char	*golist[NLAB];
 static int	 ngolist;
 static int	 loopdepth, swdepth;
 
-/* lowered statement records */
-static struct srec	 srecs[NSREC];
-static int		 nsrecs;
 static struct swcase	 cases[NCASE];
 static int		 ncases;
 static char		 labarena[NLABCH];
 static int		 nlabaren;
-static char		*brklab[NNEST], *contlab[NNEST];
+static int		 brklab[NNEST], contlab[NNEST];
 static int		 nbrk, ncont;
 static struct {
-	char		*lab1, *lab2;	/* do: body label; for: cond label */
+	int		 lab1, lab2;	/* do: body label; for: cond label */
 	struct node	*step;		/* for: the step expression */
 } loopst[NNEST];
 static int		 nloopst;
-static struct srec	*swst[NSW];
+static struct {
+	struct node	*t;		/* the switch temporary */
+	struct swcase	*chain;
+	struct swcase	**tail;
+	int		 dflt;
+	int		 endlab;
+	int		 chainlab;
+} swst[NSW];
 static int		 nsw;
-static struct swcase	**swtail[NSW];
-static char		*swdflt[NSW];
-static char		*swendlab[NSW];
-static char		*iflab[NNEST][2];	/* [0]: else/end, [1]: end */
+static int		 iflab[NNEST][2];	/* [0]: else/end, [1]: end */
 static int		 nif;
 static int		 labgen;
 static int		 swtemp;
-
-static struct srec *
-addrec (kind)
-int kind;
-{
-	struct srec *r;
-
-	if (nsrecs >= NSREC)
-		error ("function too large");
-	r = &srecs[nsrecs++];
-	r->kind = kind;
-	r->u.s.e = NULL;
-	r->u.s.lab = r->u.s.lf = r->u.w.dflt = NULL;
-	r->u.w.t = NULL;
-	r->u.w.cases = NULL;
-	return r;
-}
-
-static void
-addlab (lab)
-char *lab;
-{
-	addrec (S_LABEL)->u.s.lab = lab;
-}
-
-static void
-addjump (lab)
-char *lab;
-{
-	addrec (S_JUMP)->u.s.lab = lab;
-}
 
 static char *
 labstore (s)
@@ -88,17 +60,11 @@ char *s;
 	return p;
 }
 
-/* generated label, unique in the whole file */
-static char *
+/* generated label number, unique in the whole file */
+static int
 newlab ()
 {
-	char buf[16], *p = buf;
-
-	*p++ = '.';
-	*p++ = 'L';
-	p = numstr (p, ++labgen);
-	*p = '\0';
-	return labstore (buf);
+	return ++labgen;
 }
 
 /* a user label, mangled with the function name to stay unique */
@@ -126,8 +92,10 @@ struct dcl *d;
 {
 	struct type *tp = dcltype (curbase (), d);
 	struct symb *sp, *p;
+	struct symb *plist[NLOC];
 	char *name = dclname (d);
 	int sc = curd_sc ();
+	int np = 0;
 
 	if (name == NULL) {
 		typerr ("function name omitted");
@@ -151,21 +119,29 @@ struct dcl *d;
 		sp = install (name, sc == 0 ? SC_EXTERN : sc);
 		sp->s_tp = tp;
 	}
+	emit_fhead (name, sc);
 
 	curfunc = sp;
 	nlabels = ngolist = 0;
+	nlocidx = 0;
+	nlabaren = 0;
+	ncases = 0;
 	blkpush ();
-	for (p = tp->t_memb; p != NULL; p = p->s_next) {
-		if (insparam (p->s_name) == NULL)
-			typerr ("duplicate parameter '%s'", p->s_name);
-	}
+	/* the parameter list is stored back to front; install the
+	   parameters in declaration order so they take the first
+	   local slots */
+	for (p = tp->t_memb; p != NULL && np < NLOC; p = p->s_next)
+		plist[np++] = p;
+	while (--np >= 0)
+		if (insparam (plist[np]->s_name) == NULL)
+			typerr ("duplicate parameter '%s'",
+				plist[np]->s_name);
+	nargsloc = nlocidx;
 }
 
 void
 fdefend ()
 {
-	static struct symb *ltab[NLOC];
-	int nltab;
 	int i, j;
 
 	for (i = 0; i < ngolist; ++i) {
@@ -175,20 +151,19 @@ fdefend ()
 		if (j == nlabels)
 			typerr ("undefined label '%s'", golist[i]);
 	}
-	nltab = getlocals (ltab);
-	emit_func (curfunc->s_name, curfunc->s_sc, curfunc->s_tp, srecs,
-		   nsrecs, ltab, nltab);
+	emit_ftail (curfunc->s_tp);
 	blkpop ();
-	curfunc = NULL;
-	dcl_reset ();
-	expr_reset ();
-	nsrecs = 0;
-	nlabaren = 0;		/* labels died with the emission */
-	ncases = 0;
+	for (i = 0; i < nlocidx; ++i)
+		freesymb (ltab[i]);
+	nlocidx = 0;
 	nbrk = ncont = 0;
 	nloopst = 0;
 	nsw = 0;
 	nif = 0;
+	curfunc = NULL;
+	dcl_reset ();
+	expr_reset ();
+	held_reset ();
 }
 
 void
@@ -221,11 +196,8 @@ void
 stmtx (e)
 struct node *e;
 {
-	struct srec *r;
-
-	exproper (e);
-	r = addrec (S_EXPR);
-	r->u.s.e = e;
+	emexpr (exproper (e));
+	expr_reset ();
 }
 
 void
@@ -266,8 +238,7 @@ void
 sif (cond)
 struct node *cond;
 {
-	struct srec *r;
-	char *lt, *lf;
+	int lt, lf;
 
 	lt = newlab ();
 	lf = newlab ();
@@ -275,32 +246,30 @@ struct node *cond;
 	iflab[nif][1] = newlab ();		/* .Lend */
 	++nif;
 
-	r = addrec (S_BR);
-	r->u.s.lab = lt;
-	r->u.s.lf = lf;
-	r->u.s.e = cond;
-	addlab (lt);
+	embr (lt, lf, cond);
+	expr_reset ();
+	emlab (lt);
 }
 
 void
 sifend ()
 {
 	--nif;
-	addlab (iflab[nif][0]);
+	emlab (iflab[nif][0]);
 }
 
 void
 selse ()
 {
-	addjump (iflab[nif - 1][1]);
-	addlab (iflab[nif - 1][0]);
+	emjump (iflab[nif - 1][1]);
+	emlab (iflab[nif - 1][0]);
 }
 
 void
 sifendelse ()
 {
 	--nif;
-	addlab (iflab[nif][1]);
+	emlab (iflab[nif][1]);
 }
 
 /*
@@ -311,27 +280,24 @@ void
 swhile (cond)
 struct node *cond;
 {
-	struct srec *r;
-	char *lc, *lb;
+	int lc, lb;
 
 	lc = newlab ();
 	lb = newlab ();
 	brklab[nbrk++] = newlab ();		/* .Le */
 	contlab[ncont++] = lc;
 
-	addlab (lc);
-	r = addrec (S_BR);
-	r->u.s.lab = lb;
-	r->u.s.lf = brklab[nbrk - 1];
-	r->u.s.e = cond;
-	addlab (lb);
+	emlab (lc);
+	embr (lb, brklab[nbrk - 1], cond);
+	expr_reset ();
+	emlab (lb);
 }
 
 void
 swhileend ()
 {
-	addjump (contlab[ncont - 1]);
-	addlab (brklab[--nbrk]);
+	emjump (contlab[ncont - 1]);
+	emlab (brklab[--nbrk]);
 	--ncont;
 }
 
@@ -342,7 +308,7 @@ swhileend ()
 void
 sdo ()
 {
-	char *lb, *lc;
+	int lb, lc;
 
 	lb = newlab ();
 	lc = newlab ();
@@ -351,22 +317,18 @@ sdo ()
 	loopst[nloopst].lab1 = lb;
 	++nloopst;
 
-	addlab (lb);
+	emlab (lb);
 }
 
 void
 sdoend (cond)
 struct node *cond;
 {
-	struct srec *r;
-
 	--nloopst;
-	addlab (contlab[ncont - 1]);
-	r = addrec (S_BR);
-	r->u.s.lab = loopst[nloopst].lab1;
-	r->u.s.lf = brklab[nbrk - 1];
-	r->u.s.e = cond;
-	addlab (brklab[--nbrk]);
+	emlab (contlab[ncont - 1]);
+	embr (loopst[nloopst].lab1, brklab[nbrk - 1], cond);
+	expr_reset ();
+	emlab (brklab[--nbrk]);
 	--ncont;
 }
 
@@ -378,12 +340,11 @@ void
 sfor (e1, e2, e3)
 struct node *e1, *e2, *e3;
 {
-	struct srec *r;
-	char *lc, *lb, *ls;
+	int lc, lb, ls;
 
 	if (e1 != NULL) {
-		r = addrec (S_EXPR);
-		r->u.s.e = e1;
+		emexpr (e1);
+		expr_reset ();
 	}
 	lc = newlab ();
 	lb = newlab ();
@@ -392,48 +353,40 @@ struct node *e1, *e2, *e3;
 	contlab[ncont++] = ls;
 	loopst[nloopst].lab1 = ls;
 	loopst[nloopst].lab2 = lc;
-	loopst[nloopst].step = e3;
+	loopst[nloopst].step = e3 == NULL ? NULL : holdcopy (e3);
 	++nloopst;
+	expr_reset ();
 
-	addlab (lc);
-	if (e2 != NULL) {
-		r = addrec (S_BR);
-		r->u.s.lab = lb;
-		r->u.s.lf = brklab[nbrk - 1];
-		r->u.s.e = e2;
-	} else {
-		addjump (lb);
-	}
-	addlab (lb);
+	emlab (lc);
+	if (e2 != NULL)
+		embr (lb, brklab[nbrk - 1], e2);
+	else
+		emjump (lb);
+	emlab (lb);
 }
 
 void
 sforend ()
 {
-	struct srec *r;
-
 	--nloopst;
-	addlab (loopst[nloopst].lab1);		/* .Ls */
-	if (loopst[nloopst].step != NULL) {
-		r = addrec (S_EXPR);
-		r->u.s.e = loopst[nloopst].step;
-	}
-	addjump (loopst[nloopst].lab2);		/* .Lc */
-	addlab (brklab[--nbrk]);
+	emlab (loopst[nloopst].lab1);		/* .Ls */
+	if (loopst[nloopst].step != NULL)
+		emexpr (loopst[nloopst].step);
+	emjump (loopst[nloopst].lab2);		/* .Lc */
+	emlab (brklab[--nbrk]);
 	--ncont;
+	expr_reset ();
 }
 
 /*
- * switch (c) stores c in a hidden local, then a chain of branches
- * compares it against the case constants; default and the end label
- * close the chain.  The chain is written when the function is
- * serialized, by which time all cases are known.
+ * switch (c) stores c in a hidden local, jumps over the body to the
+ * compare chain, which sswitchend writes after it:
+ *	t = c; J .Lch; .Lk: ...; J .Lend; .Lch: (t==k?)...; .Lend:
  */
 void
 sswitch (cond)
 struct node *cond;
 {
-	struct srec *r;
 	struct symb *sp;
 	struct node *t;
 	struct type *tp;
@@ -451,18 +404,19 @@ struct node *cond;
 	sp->s_tp = tp;
 	t = nlocal (sp);
 
-	r = addrec (S_EXPR);
-	r->u.s.e = nasgn ('=', t, cond);
-
-	r = addrec (S_SW);
-	r->u.w.t = t;
-	r->u.s.lf = newlab ();			/* .Le */
-	swst[nsw] = r;
-	swtail[nsw] = &r->u.w.cases;
-	swdflt[nsw] = NULL;
-	swendlab[nsw] = r->u.s.lf;
+	emexpr (nasgn ('=', t, cond));
+	expr_reset ();
+	if (nsw >= NSW)
+		error ("switches nested too deeply");
+	swst[nsw].t = holdcopy (t);
+	swst[nsw].chain = NULL;
+	swst[nsw].tail = &swst[nsw].chain;
+	swst[nsw].dflt = 0;
+	swst[nsw].endlab = newlab ();
+	swst[nsw].chainlab = newlab ();
+	emjump (swst[nsw].chainlab);
 	++nsw;
-	brklab[nbrk++] = r->u.s.lf;
+	brklab[nbrk++] = swst[nsw - 1].endlab;
 }
 
 void
@@ -493,10 +447,10 @@ struct node *e;
 	c->next = NULL;
 	c->val = (int) v;
 	c->lab = newlab ();
-	*swtail[nsw - 1] = c;
-	swtail[nsw - 1] = &c->next;
+	*swst[nsw - 1].tail = c;
+	swst[nsw - 1].tail = &c->next;
 
-	addlab (c->lab);
+	emlab (c->lab);
 }
 
 void
@@ -508,23 +462,27 @@ stmtdflt ()
 	}
 	if (nsw == 0)
 		error ("internal: switch stack underflow");
-	swdflt[nsw - 1] = newlab ();
-	addlab (swdflt[nsw - 1]);
+	swst[nsw - 1].dflt = newlab ();
+	emlab (swst[nsw - 1].dflt);
 }
 
 void
 sswitchend ()
 {
-	addlab (swendlab[nsw - 1]);
 	--nsw;
+	emjump (swst[nsw].endlab);
+	emlab (swst[nsw].chainlab);
+	emswch (swst[nsw].t, swst[nsw].chain, swst[nsw].dflt,
+		swst[nsw].endlab);
+	emlab (swst[nsw].endlab);
 	--nbrk;
+	expr_reset ();
 }
 
 void
 stmtret (e)
 struct node *e;
 {
-	struct srec *r;
 	struct type *rt;
 
 	exproper (e);
@@ -532,7 +490,7 @@ struct node *e;
 		return;
 	rt = curfunc->s_tp->t_tp;
 	if (e == NULL) {
-		r = addrec (S_RET);
+		emret (NULL, NULL);
 		if (isarith (rt) || isptr (rt)) {
 			/* plain `return;' from a non-void function --
 			   tolerated, as the C compiler did */
@@ -541,8 +499,8 @@ struct node *e;
 	}
 	if (!compat (rt, decay (e->n_tp)))
 		typerr ("incompatible return value");
-	r = addrec (S_RETV);
-	r->u.s.e = e;
+	emret (rt, e);
+	expr_reset ();
 }
 
 void
@@ -551,7 +509,7 @@ char *name;
 {
 	if (ngolist < NLAB)
 		golist[ngolist++] = name;
-	addjump (userlab (name));
+	emusym (userlab (name), 'J');
 }
 
 void
@@ -567,7 +525,7 @@ char *name;
 		}
 	if (nlabels < NLAB)
 		labels[nlabels++] = name;
-	addlab (userlab (name));
+	emusym (userlab (name), 'L');
 }
 
 void
@@ -577,7 +535,7 @@ stmtbrk ()
 		typerr ("break outside of loop or switch");
 		return;
 	}
-	addjump (brklab[nbrk - 1]);
+	emjump (brklab[nbrk - 1]);
 }
 
 void
@@ -587,5 +545,5 @@ stmtcont ()
 		typerr ("continue outside of loop");
 		return;
 	}
-	addjump (contlab[ncont - 1]);
+	emjump (contlab[ncont - 1]);
 }
