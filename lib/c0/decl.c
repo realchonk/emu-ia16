@@ -170,7 +170,6 @@ static struct {
 	struct type	*tp;
 } curd;
 
-static int	 ndpool;			/* declarator pool high water */
 static int	 ndspool;			/* type name pool high water */
 
 /* reset the accumulated specifiers; the declarator and type name
@@ -182,7 +181,7 @@ dcl_reset ()
 	curd.sc = 0;
 	curd.bt = 0;
 	curd.tp = NULL;
-	ndpool = 0;
+	nslots = 0;		/* declarators and exprs share slots */
 	ndspool = 0;
 }
 
@@ -410,7 +409,6 @@ struct dcl *d;
 
 /* ---------------- declarator parse trees ---------------- */
 
-static struct dcl	dpool[NDCL];
 
 static struct dcl *
 mkdcl (op)
@@ -418,9 +416,9 @@ int op;
 {
 	struct dcl *d;
 
-	if (ndpool >= NDCL)
+	if (nslots >= NNNODE)
 		error ("declarator complex");
-	d = &dpool[ndpool++];
+	d = &slots[nslots++].d;
 	d->d_op = op;
 	d->d_l = NULL;
 	d->d_u.d_size = NULL;

@@ -35,6 +35,8 @@ extern int	firfd, symfd, strfd;
 
 /* expr.c */
 #define	NNODE	576			/* expression tree nodes */
+#define	NNNODE	(NNODE + 48)	/* shared slots: expr peak + pending
+				   declarators (see union slot) */
 #define	NLCON	16			/* long constants (O_LCON) */
 
 /* stmt.c */
@@ -237,6 +239,18 @@ struct swcase {
 #define	S_BR		5
 #define	S_SW		6
 
+/*
+ * Expression nodes and declarator nodes share one arena: they do
+ * overlap in time, but every reset point (statement end, declaration
+ * end) consumes both, so one bump allocator serves them.  A
+ * declarator node (6 B) fits in an expression node slot (10 B).
+ */
+union slot {
+	struct node	 n;
+	struct dcl	 d;
+};
+extern union slot	slots[];
+extern int	 nslots;
 extern int	 linenum;
 extern int	 yylval;
 extern int	 yychar;		 /* parser lookahead, for the lexer hack */

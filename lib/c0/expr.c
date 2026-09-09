@@ -10,8 +10,8 @@
  */
 
 
-static struct node	npool[NNODE];
-static int		nnpool;
+union slot		slots[NNNODE];
+int			nslots;
 long			lcons[NLCON];
 static int		nlcon;
 
@@ -23,9 +23,9 @@ struct node *l, *r;
 {
 	struct node *n;
 
-	if (nnpool >= NNODE)
+	if (nslots >= NNNODE)
 		error ("expr too complex");
-	n = &npool[nnpool++];
+	n = &slots[nslots++].n;
 	n->n_op = op;
 	n->n_tp = tp;
 	n->n_l = l;
@@ -37,7 +37,7 @@ struct node *l, *r;
 void
 expr_reset ()
 {
-	nnpool = 0;
+	nslots = 0;
 }
 
 /*
