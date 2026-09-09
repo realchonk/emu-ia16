@@ -1,4 +1,5 @@
 #include <string.h>
+#include <unistd.h>
 #include "c0.h"
 
 /*
@@ -11,19 +12,12 @@
  */
 
 
-static char	*symnames[NSYMNM];
+static int	 symnames[NSYMNM];	/* string file offsets */
 static int	 nsymnames;
-static char	 nmarena[NNAMEAR];
-static int	 nmnaren;
-
-/* string literals used so far, and which have been defined as data */
-static int	 strused[NSTRDEF];
-static int	 strdefs[NSTRDEF];
-static int	 nstrused;
 
 /* static locals: symbol -> mangled name */
 static struct symb *sttab[NSTATIC];
-static char	 *stname[NSTATIC];
+static int	  stname[NSTATIC];
 static int	 nstatic;
 
 /* ltab/nlocidx/nargsloc come from decl.c/stmt.c */
@@ -60,20 +54,6 @@ long v;
 	}
 }
 
-static char *
-nmstore (s)
-char *s;
-{
-	char *p = &nmarena[nmnaren];
-	int len = strlen (s) + 1;
-
-	if (nmnaren + len > NNAMEAR)
-		error ("too many generated names");
-	memcpy (p, s, len);
-	nmnaren += len;
-	return p;
-}
-
 /* append the decimal representation of n to s, return the end */
 char *
 numstr (s, n)
@@ -96,41 +76,62 @@ int n;
 	return s;
 }
 
-static char *
+/* "a.b" from two string file offsets, interned */
+static int
 genname (a, b)
-char *a, *b;
+int a, b;
 {
-	char buf[80], *p = buf;
+	char bufa[48], bufb[48], buf[96], *p;
+	int i, n;
 
-	while (*a != '\0')
-		*p++ = *a++;
+	n = pread (strfd, bufa, sizeof bufa - 1, (long) a);
+	if (n < 0)
+		n = 0;
+	bufa[n] = '\0';
+	n = pread (strfd, bufb, sizeof bufb - 1, (long) b);
+	if (n < 0)
+		n = 0;
+	bufb[n] = '\0';
+	p = buf;
+	for (i = 0; bufa[i] != '\0' && p < buf + sizeof buf - 1; ++i)
+		*p++ = bufa[i];
 	*p++ = '.';
-	while (*b != '\0')
-		*p++ = *b++;
+	for (i = 0; bufb[i] != '\0' && p < buf + sizeof buf - 1; ++i)
+		*p++ = bufb[i];
 	*p = '\0';
-	return nmstore (buf);
+	return intern (buf);
 }
 
 static int
 emitsym (name)
-char *name;
+int name;
 {
-	int i;
+	char buf[48];
+	int i, n, t;
 
 	for (i = 0; i < nsymnames; ++i)
-		if (strcmp (symnames[i], name) == 0)
+		if (symnames[i] == name)
 			return i;
 	if (nsymnames >= NSYMNM)
 		error ("too many symbols");
 	symnames[nsymnames] = name;
-	oputs (name, symfd);
+	for (t = 0; ; t += n) {
+		n = pread (strfd, buf, sizeof buf, (long) (name + t));
+		if (n <= 0)
+			break;
+		for (i = 0; i < n; ++i) {
+			oputc (buf[i], symfd);
+			if (buf[i] == '\0')
+				return nsymnames++;
+		}
+	}
 	oputc (0, symfd);
 	return nsymnames++;
 }
 
 static void
 wsym (name)
-char *name;
+int name;
 {
 	wword (emitsym (name));
 }
@@ -185,60 +186,9 @@ struct type *t;
 
 /* ---------------- string literals ---------------- */
 
-static char *
-strname (idx)
-int idx;
-{
-	char buf[16], *p = buf;
-
-	*p++ = '.';
-	*p++ = 's';
-	p = numstr (p, idx);
-	*p = '\0';
-	return nmstore (buf);
-}
-
-static void
-usestring (idx)
-int idx;
-{
-	int i;
-
-	for (i = 0; i < nstrused; ++i)
-		if (strused[i] == idx)
-			return;
-	if (nstrused >= NSTRDEF)
-		error ("too many strings");
-	strused[nstrused++] = idx;
-	strdefs[nstrused - 1] = 0;
-}
-
-/* define the data of every string used but not yet defined */
-static void
-flushstrings ()
-{
-	int i, j, len;
-
-	for (i = 0; i < nstrused; ++i) {
-		if (strdefs[i])
-			continue;
-		strdefs[i] = 1;
-		len = strlen (sdata + strused[i]);
-		wbyte ('D');
-		wbyte (2 | 4);		/* static, initialized */
-		wsym (strname (strused[i]));
-		wword (len + 1);
-		wbyte (0x01);
-		wword (len + 1);
-		for (j = 0; j <= len; ++j)
-			wbyte (sdata[strused[i] + j]);
-		wbyte (0x00);
-	}
-}
-
 /* ---------------- static locals ---------------- */
 
-static char *
+static int
 staticname (sp)
 struct symb *sp;
 {
@@ -247,7 +197,7 @@ struct symb *sp;
 	for (i = 0; i < nstatic; ++i)
 		if (sttab[i] == sp)
 			return stname[i];
-	return NULL;
+	return 0;
 }
 
 void
@@ -256,7 +206,7 @@ struct symb *sp;
 struct type *tp;
 struct node *init;
 {
-	char *name;
+	int name;
 
 	name = genname (curfunc->s_name, sp->s_name);
 	if (nstatic >= NSTATIC)
@@ -298,11 +248,23 @@ long v;
 
 static void
 ireloc (name, off)
-char *name;
+int name;
 long off;
 {
 	wbyte (0x02);
 	wsym (name);
+	wword ((int) off);
+	icnt += 2;
+}
+
+/* a word holding the address of a string file entry */
+static void
+istrreloc (six, off)
+int six;
+long off;
+{
+	wbyte (0x03);
+	wword (six);
 	wword ((int) off);
 	icnt += 2;
 }
@@ -318,31 +280,37 @@ int to;
 /*
  * Try to evaluate e as a constant address (symbol + offset).
  */
+/*
+ * Constant address of e: either a symbol name (string file offset)
+ * or a string file entry; *pstr says which.
+ */
 static int
-constaddr (e, pname, poff)
+constaddr (e, pname, poff, pstr)
 struct node *e;
-char **pname;
+int *pname;
 long *poff;
+int *pstr;
 {
 	struct symb *sp, *m;
 	struct type *t;
 	long v;
 	int ok, sz;
 
+	*pstr = 0;
 	switch (e->n_op) {
 	case O_STR:
-		usestring (e->n_val);
-		*pname = strname (e->n_val);
+		*pname = e->n_val;
 		*poff = 0;
+		*pstr = 1;
 		return 1;
 	case O_ADDR:
-		return constaddr (e->n_l, pname, poff);
+		return constaddr (e->n_l, pname, poff, pstr);
 	case O_NAME:
 		sp = (struct symb *) e->n_l;
 		if (sp->s_sc == SC_AUTO || sp->s_sc == SC_PARAM
 		    || sp->s_sc == SC_REGISTER)
 			return 0;	/* address of a local */
-		if (staticname (sp) != NULL)
+		if (staticname (sp) != 0)
 			*pname = staticname (sp);
 		else
 			*pname = sp->s_name;
@@ -354,13 +322,13 @@ long *poff;
 		if (isarith (decay (e->n_r->n_tp))) {
 			/* constant indexing is enough for initializers */
 			v = fold (e->n_r, &ok);
-			if (ok && constaddr (e->n_l, pname, poff)) {
+			if (ok && constaddr (e->n_l, pname, poff, pstr)) {
 				*poff += v * sz;
 				return 1;
 			}
 		} else {
 			v = fold (e->n_l, &ok);
-			if (ok && constaddr (e->n_r, pname, poff)) {
+			if (ok && constaddr (e->n_r, pname, poff, pstr)) {
 				*poff += v * sz;
 				return 1;
 			}
@@ -371,7 +339,7 @@ long *poff;
 		m = (struct symb *) e->n_r;
 		if (e->n_op == O_ARROW)
 			return 0;
-		if (constaddr (e->n_l, pname, poff)) {
+		if (constaddr (e->n_l, pname, poff, pstr)) {
 			*poff += m->s_sc;
 			return 1;
 		}
@@ -405,7 +373,7 @@ struct type *tp;
 struct node *e;
 {
 	struct symb *m;
-	char *name;
+	int name, isstr;
 	long v, off;
 	int ok, sz, i;
 
@@ -413,13 +381,25 @@ struct node *e;
 		return;
 	switch (tp->t_op) {
 	case T_ARY:
-		if (e->n_op == O_STR
-		    && ischar (tp->t_tp)) {
-			sz = strnlen (e);
+		if (e->n_op == O_STR && ischar (tp->t_tp)) {
+			char buf[32];
+			int j, n;
+
+			sz = strnlen (e->n_val);
 			wbyte (0x01);
 			wword (sz + 1);
-			for (v = 0; v <= sz; ++v)
-				wbyte (sdata[e->n_val + v]);
+			for (i = 0; ; i += n) {
+				n = pread (strfd, buf, sizeof buf,
+					   (long) (e->n_val + i));
+				if (n <= 0)
+					break;
+				for (j = 0; j < n; ++j) {
+					wbyte (buf[j]);
+					if (buf[j] == '\0')
+						goto strdone;
+				}
+			}
+		strdone:
 			icnt += sz + 1;
 			return;
 		}
@@ -442,8 +422,11 @@ struct node *e;
 		}
 		return;
 	default:
-		if (constaddr (e, &name, &off)) {
-			ireloc (name, off);
+		if (constaddr (e, &name, &off, &isstr)) {
+			if (isstr)
+				istrreloc (name, off);
+			else
+				ireloc (name, off);
 			return;
 		}
 		v = fold (e, &ok);
@@ -459,7 +442,7 @@ struct node *e;
 
 void
 emit_data (name, sc, tp, init)
-char *name;
+int name;
 int sc;
 struct type *tp;
 struct node *init;
@@ -477,12 +460,11 @@ struct node *init;
 		emit_init (tp, init);
 		wbyte (0x00);
 	}
-	flushstrings ();
 }
 
 void
 emit_fdecl (name, sc)
-char *name;
+int name;
 int sc;
 {
 	wbyte ('F');
@@ -561,7 +543,7 @@ struct symb *sp;
 		}
 	wbyte ('g');
 	wtyaddr ();
-	wsym (staticname (sp) != NULL ? staticname (sp) : sp->s_name);
+	wsym (staticname (sp) != 0 ? staticname (sp) : sp->s_name);
 }
 
 /* emit e scaled by sz (pointer indexing) */
@@ -711,10 +693,8 @@ struct type *oty;
 					   : (long) e->n_val, ty);
 		return;
 	case O_STR:
-		usestring (e->n_val);
-		wbyte ('g');
-		wtyaddr ();
-		wsym (strname (e->n_val));
+		wbyte ('S');
+		wword (e->n_val);
 		return;
 	case O_NAME:
 		sp = (struct symb *) e->n_l;
@@ -832,7 +812,7 @@ struct type *oty;
 
 void
 emit_fhead (name, sc)
-char *name;
+int name;
 int sc;
 {
 	wbyte ('F');
@@ -890,7 +870,7 @@ int lab;
 /* a user label: written as a plain symbol name */
 void
 emusym (lab, kind)
-char *lab;
+int lab;
 int kind;			/* 'L' or 'J' */
 {
 	wbyte (kind);

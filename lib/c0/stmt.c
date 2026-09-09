@@ -1,4 +1,5 @@
 #include <string.h>
+#include <unistd.h>
 #include "c0.h"
 
 /*
@@ -15,16 +16,14 @@
 
 struct symb	*curfunc;
 
-static char	*labels[NLAB];		/* raw names, for the checks */
+static int	 labels[NLAB];		/* name offsets, for the checks */
 static int	 nlabels;
-static char	*golist[NLAB];
+static int	 golist[NLAB];
 static int	 ngolist;
 static int	 loopdepth, swdepth;
 
 static struct swcase	 cases[NCASE];
 static int		 ncases;
-static char		 labarena[NLABCH];
-static int		 nlabaren;
 static int		 brklab[NNEST], contlab[NNEST];
 static int		 nbrk, ncont;
 static struct {
@@ -46,20 +45,6 @@ static int		 nif;
 static int		 labgen;
 static int		 swtemp;
 
-static char *
-labstore (s)
-char *s;
-{
-	char *p = &labarena[nlabaren];
-	int len = strlen (s) + 1;
-
-	if (nlabaren + len > NLABCH)
-		error ("function too large");
-	memcpy (p, s, len);
-	nlabaren += len;
-	return p;
-}
-
 /* generated label number, unique in the whole file */
 static int
 newlab ()
@@ -68,20 +53,31 @@ newlab ()
 }
 
 /* a user label, mangled with the function name to stay unique */
-static char *
+static int
 userlab (name)
-char *name;
+int name;
 {
-	char buf[80], *p = buf;
-	char *fn = curfunc->s_name;
+	char fnm[48], nm[MAXIDENT + 1];
+	char buf[96], *p, *f;
+	int n;
 
-	while (*fn != '\0')
-		*p++ = *fn++;
+	n = pread (strfd, fnm, sizeof fnm - 1, (long) curfunc->s_name);
+	if (n < 0)
+		n = 0;
+	fnm[n] = '\0';
+	n = pread (strfd, nm, sizeof nm - 1, (long) name);
+	if (n < 0)
+		n = 0;
+	nm[n] = '\0';
+
+	p = buf;
+	for (f = fnm; *f != '\0' && p < buf + sizeof buf - 1; ++f)
+		*p++ = *f;
 	*p++ = '.';
-	while (*name != '\0')
-		*p++ = *name++;
+	for (n = 0; nm[n] != '\0' && p < buf + sizeof buf - 1; ++n)
+		*p++ = nm[n];
 	*p = '\0';
-	return labstore (buf);
+	return intern (buf);
 }
 
 /* ---------------- function definitions ---------------- */
@@ -93,13 +89,13 @@ struct dcl *d;
 	struct type *tp = dcltype (curbase (), d);
 	struct symb *sp, *p;
 	struct symb *plist[NLOC];
-	char *name = dclname (d);
+	int name = dclname (d);
 	int sc = curd_sc ();
 	int np = 0;
 
-	if (name == NULL) {
+	if (name == 0) {
 		typerr ("function name omitted");
-		name = "";
+		name = intern ("?");
 	}
 	if (tp->t_op != T_FUNC) {
 		/* a non-function declarator given a body; treat as
@@ -111,9 +107,9 @@ struct dcl *d;
 	sp = lookup (name);
 	if (sp != NULL) {
 		if (sp->s_tp->t_op != T_FUNC)
-			typerr ("redeclaration of '%s'", name);
+			typerr ("redeclaration of '%s'", (int) namebuf (name));
 		else if (!compat (sp->s_tp->t_tp, tp->t_tp))
-			typerr ("conflicting return type for '%s'", name);
+			typerr ("conflicting return type for '%s'", (int) namebuf (name));
 		sp->s_tp = tp;
 	} else {
 		sp = install (name, sc == 0 ? SC_EXTERN : sc);
@@ -124,7 +120,6 @@ struct dcl *d;
 	curfunc = sp;
 	nlabels = ngolist = 0;
 	nlocidx = 0;
-	nlabaren = 0;
 	ncases = 0;
 	blkpush ();
 	/* the parameter list is stored back to front; install the
@@ -135,7 +130,7 @@ struct dcl *d;
 	while (--np >= 0)
 		if (insparam (plist[np]->s_name) == NULL)
 			typerr ("duplicate parameter '%s'",
-				plist[np]->s_name);
+				(int) namebuf (plist[np]->s_name));
 	nargsloc = nlocidx;
 }
 
@@ -146,10 +141,10 @@ fdefend ()
 
 	for (i = 0; i < ngolist; ++i) {
 		for (j = 0; j < nlabels; ++j)
-			if (strcmp (golist[i], labels[j]) == 0)
+			if (golist[i] == labels[j])
 				break;
 		if (j == nlabels)
-			typerr ("undefined label '%s'", golist[i]);
+			typerr ("undefined label '%s'", (int) namebuf (golist[i]));
 	}
 	emit_ftail (curfunc->s_tp);
 	blkpop ();
@@ -400,7 +395,7 @@ struct node *cond;
 	*p++ = 'w';
 	p = numstr (p, ++swtemp);
 	*p = '\0';
-	sp = install (labstore (buf), SC_AUTO);
+	sp = install (intern (buf), SC_AUTO);
 	sp->s_tp = tp;
 	t = nlocal (sp);
 
@@ -505,7 +500,7 @@ struct node *e;
 
 void
 stmtgoto (name)
-char *name;
+int name;
 {
 	if (ngolist < NLAB)
 		golist[ngolist++] = name;
@@ -514,13 +509,13 @@ char *name;
 
 void
 stmtlabel (name)
-char *name;
+int name;
 {
 	int i;
 
 	for (i = 0; i < nlabels; ++i)
-		if (strcmp (labels[i], name) == 0) {
-			typerr ("duplicate label '%s'", name);
+		if (labels[i] == name) {
+			typerr ("duplicate label '%s'", (int) namebuf (name));
 			return;
 		}
 	if (nlabels < NLAB)

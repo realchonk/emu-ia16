@@ -155,7 +155,7 @@ int *ok;
 
 struct node *
 nname (name)
-char *name;
+int name;
 {
 	struct symb *sp;
 	struct node *n;
@@ -173,7 +173,7 @@ char *name;
 			sp->s_tp = mktype (T_FUNC, btype (BT_INT), 0, NULL,
 					   NULL);
 		} else {
-			typerr ("'%s' undefined", name);
+			typerr ("'%s' undefined", (int) namebuf (name));
 			sp = install (name, nscope > 0 ? SC_AUTO : SC_EXTERN);
 			sp->s_tp = btype (BT_INT);
 		}

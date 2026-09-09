@@ -1,6 +1,7 @@
 #include <_varargs.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <ctype.h>
 #include "c0.h"
 
@@ -19,14 +20,8 @@ long		numval;
 int		numbt;
 
 static int	bol = 1;
-static int	sidx;			/* string bytes written so far */
-
-/*
- * The string bytes are collected here, so that the IR emitter can
- * define string literals as data records; the index stored in a
- * STRING token is an offset into this array.
- */
-char		sdata[NSDATA];
+int		stroff = 1;		/* end of the string file; offset 0
+				   is reserved so that 0 means "no name" */
 
 struct kwent {
 	char	*k_name;
@@ -66,34 +61,65 @@ static const struct kwent kwtab[] = {
 	{ NULL,		0,		0 },
 };
 
-/* interned identifier strings, kept for the life of the run */
-
-static char	 narena[NNAME];
-static int	 narenai;
-static char	*itab[NINT];
+/*
+ * The string file is the name store: identifiers, labels, generated
+ * names and string literals are written to it NUL-separated, and a
+ * name IS its byte offset.  Equal contents get equal offsets (the
+ * itab index), so name comparisons anywhere are int comparisons; the
+ * bytes are read back with pread() only where they are needed.
+ */
+static int	 itab[NINT];		/* offsets of interned names */
 static int	 nint;
+static char	 nbuf[MAXIDENT + 1];
 
-static char *
+/* read a name back; a single rotating buffer, one name per message */
+char *
+namebuf (off)
+int off;
+{
+	int n;
+
+	n = pread (strfd, nbuf, MAXIDENT, (long) off);
+	if (n < 0)
+		n = 0;
+	if (n > MAXIDENT)
+		n = MAXIDENT;
+	nbuf[n] = '\0';
+	return nbuf;
+}
+
+/* append a byte to the string file */
+static void
+sputc (c)
+int c;
+{
+	char ch = c;
+
+	pwrite (strfd, &ch, 1, (long) stroff);
+	++stroff;
+}
+
+int
 intern (s)
 char *s;
 {
-	char	*copy;
-	int	 i;
+	int	 off, i, len;
 
-	for (i = 0; i < nint; ++i)
-		if (strcmp (itab[i], s) == 0)
+	len = strlen (s);
+	for (i = 0; i < nint; ++i) {
+		pread (strfd, nbuf, len + 1, (long) itab[i]);
+		nbuf[len + 1 > MAXIDENT ? MAXIDENT : len + 1] = '\0';
+		if (nbuf[0] == s[0] && strcmp (nbuf, s) == 0)
 			return itab[i];
-
-	copy = &narena[narenai];
-	while (*s != '\0') {
-		if (narenai >= NNAME)
-			error ("out of space for identifiers");
-		narena[narenai++] = *s++;
 	}
-	narena[narenai++] = '\0';
+
+	off = stroff;
+	while (*s != '\0')
+		sputc (*s++);
+	sputc (0);
 	if (nint < NINT)
-		itab[nint++] = copy;
-	return copy;
+		itab[nint++] = off;
+	return off;
 }
 
 __dead void
@@ -201,7 +227,7 @@ static int
 lex ()
 {
 	char	 id[MAXIDENT + 1];
-	char	*name;
+	int	 name;
 	struct symb *sp;
 	const struct kwent *kw;
 	long	 v;
@@ -352,7 +378,7 @@ lex ()
 		numbt = BT_INT;
 		return INTEGER;
 	case '"':
-		v = sidx;
+		v = stroff;
 		while ((ch = get ()) != '"') {
 			if (ch == EOF)
 				error ("unterminated string constant");
@@ -360,15 +386,9 @@ lex ()
 				goto put;
 			ch = escape (get ());
 		put:
-			if (sidx >= (int) sizeof (sdata))
-				error ("too much string data");
-			sdata[sidx] = ch;
-			++sidx;
+			sputc (ch);
 		}
-		if (sidx >= (int) sizeof (sdata))
-			error ("too much string data");
-		sdata[sidx] = '\0';
-		++sidx;
+		sputc (0);
 		yylval = (int) v;
 		return STRING;
 	case '.':
@@ -492,27 +512,39 @@ static int	peeklval;
 static long	peeknumval;
 static int	peeknumbt;
 
-/* concatenate two string literals; returns the new index */
+/* concatenate two string literals: copy both to the file's end */
 int
 strconcat (ai, bi)
 int ai, bi;
 {
-	int ni = sidx;
-	int i;
+	int ni = stroff;
+	int i, j, n;
+	char buf[32];
 
-	for (i = ai; sdata[i] != '\0'; ++i) {
-		if (sidx >= (int) sizeof (sdata))
-			error ("too much string data");
-		sdata[sidx++] = sdata[i];
+	for (i = 0; ; i += n) {
+		n = pread (strfd, buf, sizeof buf, (long) (ai + i));
+		if (n <= 0)
+			goto part2;
+		for (j = 0; j < n; ++j) {
+			if (buf[j] == '\0')
+				goto part2;
+			sputc (buf[j]);
+		}
 	}
-	for (i = bi; sdata[i] != '\0'; ++i) {
-		if (sidx >= (int) sizeof (sdata))
-			error ("too much string data");
-		sdata[sidx++] = sdata[i];
+part2:
+	;
+	for (i = 0; ; i += n) {
+		n = pread (strfd, buf, sizeof buf, (long) (bi + i));
+		if (n <= 0)
+			goto done;
+		for (j = 0; j < n; ++j) {
+			if (buf[j] == '\0')
+				goto done;
+			sputc (buf[j]);
+		}
 	}
-	if (sidx >= (int) sizeof (sdata))
-		error ("too much string data");
-	sdata[sidx++] = '\0';
+done:
+	sputc (0);
 	return ni;
 }
 

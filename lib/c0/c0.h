@@ -5,8 +5,12 @@
 
 #define EOF	(-1)
 
-/* output file descriptors; input is file descriptor 0 */
-extern int	firfd, symfd;
+/* output file descriptors; input is file descriptor 0.  The string
+ * file is also the name store: identifiers, labels and strings live
+ * in it NUL-separated, and a name is its byte offset (an int), so
+ * name equality is offset equality.  Bytes are read back with
+ * pread() where they are needed. */
+extern int	firfd, symfd, strfd;
 
 #define MAXIDENT	31
 
@@ -17,9 +21,7 @@ extern int	firfd, symfd;
  */
 
 /* lex.c */
-#define	NNAME	4096			/* identifier arena, bytes */
-#define	NINT	448			/* interned identifiers */
-#define	NSDATA	2560			/* string literal bytes */
+#define	NINT	448			/* interned names (string file offsets) */
 
 /* type.c */
 #define	NTYPE	256			/* type pool entries */
@@ -41,12 +43,9 @@ extern int	firfd, symfd;
 #define	NNEST	32			/* nested loops, ifs, switches */
 #define	NSW	8			/* nested switches */
 #define	NLOC	128			/* params and locals per function */
-#define	NLABCH	512			/* user label names, bytes */
 
 /* emit.c */
 #define	NSYMNM	512			/* names in the symbol file */
-#define	NNAMEAR	1024			/* generated names, bytes */
-#define	NSTRDEF	96			/* distinct string literals */
 #define	NSTATIC	48			/* static locals */
 #define	NITEM	128			/* flattened initializer items */
 
@@ -182,7 +181,7 @@ struct type {
 
 struct symb {
 	struct symb	*s_next;	/* scope chain */
-	char		*s_name;
+	int		 s_name;	/* name: offset into the string file */
 	struct type	*s_tp;
 	int		 s_sc;		/* SC_*; struct/union members store
 					   their byte offset here, as the
@@ -211,7 +210,7 @@ struct dcl {
 	int		 d_op;
 	struct dcl	*d_l;
 	union {				/* by d_op, exactly one of these */
-		char		*d_name;	/* D_NAME */
+		int		 d_name;	/* D_NAME: string file offset */
 		struct symb	*d_params;	/* D_FUNC */
 		struct node	*d_size;	/* D_ARY */
 	} d_u;
@@ -254,7 +253,8 @@ __dead void error ();
 void	 typerr ();
 void	 mini ();			 /* tiny formatter: %s %d %c %o */
 void	 oputc (), oputs ();	 /* write bytes to a file descriptor */
-int	 c0getc (), c0ungetc (), strconcat ();
+int	 c0getc (), c0ungetc (), strconcat (), intern ();
+char	*namebuf ();		 /* read a name back from the string file */
 
 /* type.c */
 struct type	*mktype (), *btype (), *ptrtype (), *decay (), *usual ();
@@ -271,7 +271,7 @@ struct type	*curbase (), *su_begin (), *su_end (), *su_ref (),
 struct dcl	*dstar (), *dptrn (), *dchain (), *dname (), *dfunc (),
 		 *dary ();
 struct dspec	*tn_bt (), *tn_td (), *tn_su (), *tn_cat ();
-char		*dclname ();
+int		 dclname ();
 int		 curd_sc (), strnlen ();
 void		 dcl_reset (), freesymb (), sc_sclass (), sc_type (),
 		 sc_const (), sc_su (), sc_td (), member (), bindparam (),
@@ -305,6 +305,7 @@ void	 emit_data (), emit_fdecl (), emit_static ();
 void	 emit_fhead (), emit_ftail ();
 void	 emexpr ();		 /* write the bytes of an expression */
 void	 emlab (), emjump (), embr (), emret (), emswch ();
+void		 emusym ();
 char	*numstr ();		 /* append a decimal number to a string */
 
 #endif /* FILE_C0_H */

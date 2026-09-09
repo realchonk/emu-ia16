@@ -2,14 +2,13 @@
 All symbol names used by the IR, separated by NUL bytes.  A `sym` is
 the 0-based index of a name in this file, in order of first use.
 Mangled names: user labels are "func.label", static locals are
-"func.name", generated labels are ".Ln", string literals are ".sN",
-switch temporaries are ".swN".
+"func.name", generated labels are ".Ln", switch temporaries are ".swN".
+
+# *.string
+All strings from the C file, separated by NUL bytes.
 
 # *.ir
 Magic: "CIR\0"
-
-String literals are defined in this file as anonymous static data
-records (".sN"), so the IR is self-contained.
 
 ## Misc Stuff
 byte:
@@ -22,6 +21,8 @@ sym: word
 	index into the symbol file; if the high bit is set, the low
 	15 bits are a generated label number (".LN") and the name is
 	not in the symbol file
+six: word
+	index into the string file
 ty: byte
 	The type of an expression, so that c1 knows the width and
 	signedness of every operand:
@@ -56,6 +57,8 @@ size (word):
 init: chunk* (exactly `size` bytes; c1 pads with zeros)
 	0x01 word-n		followed by n literal bytes
 	0x02 sym word-addend	a word holding address of sym + addend
+	0x03 six word-addend	a word holding the address of the string
+				file entry six + addend
 	0x00			end of chunks
 
 Function Definition: "F" flags sym code "\xff" args "\xff\xff" vars "\xff\xff"
@@ -90,6 +93,8 @@ Expr:			expr
 Integer:		"i" ty word
 Long:			"I" ty dword
 	chosen by ty, or by the value not fitting a word
+String:			"S" six
+	taken from the .string file
 Global Symbol:		"g" ty sym
 	the address of sym (a word, unsigned)
 Local Symbol:		"l" ty byte

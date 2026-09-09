@@ -1,4 +1,5 @@
 #include <string.h>
+#include <unistd.h>
 #include "c0.h"
 
 /*
@@ -35,7 +36,7 @@ mksymb ()
 		s = &spool[nspool++];
 	}
 	s->s_next = NULL;
-	s->s_name = NULL;
+	s->s_name = 0;
 	s->s_tp = NULL;
 	s->s_sc = 0;
 	return s;
@@ -44,17 +45,17 @@ mksymb ()
 static struct symb *
 scopefind (chain, name)
 struct symb *chain;
-char *name;
+int name;
 {
 	for (; chain != NULL; chain = chain->s_next)
-		if (strcmp (chain->s_name, name) == 0)
+		if (chain->s_name == name)
 			return chain;
 	return NULL;
 }
 
 struct symb *
 lookup (name)
-char *name;
+int name;
 {
 	struct symb *s;
 	int i;
@@ -74,7 +75,7 @@ int		 nlocidx, nargsloc;
 
 struct symb *
 install (name, sc)
-char *name;
+int name;
 int sc;
 {
 	struct symb *s;
@@ -101,7 +102,7 @@ int sc;
 /* install into the global scope, wherever we are (implicit functions) */
 struct symb *
 ginstall (name, sc)
-char *name;
+int name;
 int sc;
 {
 	struct symb *s;
@@ -150,7 +151,7 @@ struct symb *s;
  */
 struct symb *
 insparam (name)
-char *name;
+int name;
 {
 	struct symb *sp;
 
@@ -266,12 +267,12 @@ static struct {
 
 static struct type *
 tagfind (name)
-char *name;
+int name;
 {
 	struct symb *t;
 
 	for (t = tags; t != NULL; t = t->s_next)
-		if (strcmp (t->s_name, name) == 0)
+		if (t->s_name == name)
 			return t->s_tp;
 	return NULL;
 }
@@ -279,7 +280,7 @@ char *name;
 static struct type *
 tagtype (sou, name)
 int sou;
-char *name;
+int name;
 {
 	struct type *tp;
 	struct symb *t;
@@ -299,14 +300,14 @@ char *name;
 struct type *
 su_begin (sou, tag)
 int sou;
-char *tag;
+int tag;
 {
 	struct type *tp;
 
-	if (tag != NULL) {
+	if (tag != 0) {
 		tp = tagtype (sou, tag);
-		if (tp->t_memb != NULL)
-			typerr ("redefinition of '%s'", tag);
+		if (tp->t_memb != 0)
+			typerr ("redefinition of '%s'", (int) namebuf (tag));
 		tp->t_op = sou;
 	} else
 		tp = mktype (sou, NULL, 0, NULL, NULL);
@@ -345,7 +346,7 @@ su_end ()
 struct type *
 su_ref (sou, tag)
 int sou;
-char *tag;
+int tag;
 {
 	struct type *tp;
 
@@ -360,28 +361,28 @@ struct dcl *d;
 {
 	struct type *tp = dcltype (curbase (), d);
 	struct symb *m, **tail;
-	char *name = dclname (d);
+	int name = dclname (d);
 	int sz, align;
 
 	if (nsu == 0) {
 		typerr ("member outside struct");
 		return;
 	}
-	if (name == NULL) {
+	if (name == 0) {
 		typerr ("member name omitted");
 		return;
 	}
 	if (tp->t_op == T_FUNC) {
-		typerr ("'%s' has function type", name);
+		typerr ("'%s' has function type", (int) namebuf (name));
 		return;
 	}
 	if ((tp->t_op == T_STRUCT || tp->t_op == T_UNION)
 	    && tp->t_memb == NULL) {
-		typerr ("member '%s' has incomplete type", name);
+		typerr ("member '%s' has incomplete type", (int) namebuf (name));
 		return;
 	}
 	if (scopefind (sustack[nsu - 1].su->t_memb, name) != NULL) {
-		typerr ("duplicate member '%s'", name);
+		typerr ("duplicate member '%s'", (int) namebuf (name));
 		return;
 	}
 
@@ -423,7 +424,7 @@ int op;
 	d->d_op = op;
 	d->d_l = NULL;
 	d->d_u.d_size = NULL;
-	d->d_u.d_name = NULL;
+	d->d_u.d_name = 0;
 	d->d_u.d_params = NULL;
 	return d;
 }
@@ -465,7 +466,7 @@ struct dcl *ptrs, *d;
 
 struct dcl *
 dname (name)
-char *name;
+int name;
 {
 	struct dcl *d = mkdcl (D_NAME);
 
@@ -499,7 +500,7 @@ struct node *size;
 
 struct symb *
 param1 (name)
-char *name;
+int name;
 {
 	struct symb *p = mksymb ();
 
@@ -510,7 +511,7 @@ char *name;
 struct symb *
 paramn (list, name)
 struct symb *list;
-char *name;
+int name;
 {
 	struct symb *p = mksymb ();
 
@@ -566,13 +567,13 @@ struct dcl *d;
 	return t;
 }
 
-char *
+int
 dclname (d)
 struct dcl *d;
 {
 	while (d != NULL && d->d_op != D_NAME)
 		d = d->d_l;
-	return d == NULL ? NULL : d->d_u.d_name;
+	return d == NULL ? 0 : d->d_u.d_name;
 }
 
 /* ---------------- type names (casts, sizeof) ---------------- */
@@ -653,7 +654,7 @@ bindparam (d)
 struct dcl *d;
 {
 	struct type *tp = dcltype (curbase (), d);
-	char *name = dclname (d);
+	int name = dclname (d);
 	struct symb *p;
 
 	/* K&R: array and function parameters arrive as pointers */
@@ -662,13 +663,13 @@ struct dcl *d;
 	else if (tp->t_op == T_FUNC)
 		tp = ptrtype (tp);
 
-	if (name == NULL) {
+	if (name == 0) {
 		typerr ("parameter name omitted");
 		return;
 	}
 	p = lookup (name);
 	if (p == NULL || p->s_sc != SC_PARAM) {
-		typerr ("'%s' is not a parameter", name);
+		typerr ("'%s' is not a parameter", (int) namebuf (name));
 		return;
 	}
 	p->s_tp = tp;
@@ -681,16 +682,16 @@ struct node *init;
 {
 	struct type *tp = dcltype (curbase (), d);
 	struct symb *sp, *old;
-	char *name = dclname (d);
+	int name = dclname (d);
 	int sc;
 
 	if (curd.sc == SC_TYPEDEF) {
-		if (name == NULL) {
+		if (name == 0) {
 			typerr ("typedef name omitted");
 			return;
 		}
 		if (lookup (name) != NULL) {
-			typerr ("redeclaration of '%s'", name);
+			typerr ("redeclaration of '%s'", (int) namebuf (name));
 			return;
 		}
 		sp = install (name, SC_TYPEDEF);
@@ -698,7 +699,7 @@ struct node *init;
 		return;
 	}
 
-	if (name == NULL) {
+	if (name == 0) {
 		typerr ("name omitted in declarator");
 		return;
 	}
@@ -707,16 +708,16 @@ struct node *init;
 		old = scopefind (globals, name);
 		if (old != NULL && nscope == 0) {
 			if (old->s_tp->t_op != T_FUNC)
-				typerr ("redeclaration of '%s'", name);
+				typerr ("redeclaration of '%s'", (int) namebuf (name));
 			else if (!compat (old->s_tp->t_tp, tp->t_tp))
 				typerr ("conflicting return type for '%s'",
-					name);
+					(int) namebuf (name));
 			old->s_tp = tp;
 			chkinit (tp, init);
 			return;
 		}
 		if (old != NULL && nscope > 0) {
-			typerr ("redeclaration of '%s'", name);
+			typerr ("redeclaration of '%s'", (int) namebuf (name));
 			return;
 		}
 		sc = curd.sc == 0 ? SC_EXTERN : curd.sc;
@@ -730,7 +731,7 @@ struct node *init;
 		if (old != NULL) {
 			if (nscope > 0 || !compat (old->s_tp, tp)
 			    || old->s_sc == SC_TYPEDEF)
-				typerr ("redeclaration of '%s'", name);
+				typerr ("redeclaration of '%s'", (int) namebuf (name));
 			else
 				old->s_tp = tp;
 			chkinit (tp, init);
@@ -744,10 +745,10 @@ struct node *init;
 	sp->s_tp = tp;
 	if ((tp->t_op == T_STRUCT || tp->t_op == T_UNION)
 	    && tp->t_memb == NULL)
-		typerr ("'%s' has incomplete type", name);
+		typerr ("'%s' has incomplete type", (int) namebuf (name));
 	else if (tp->t_op == (BT_VOID | BT_CONST)
 		 || (tp->t_op & BT_MASK) == BT_VOID)
-		typerr ("'%s' has void type", name);
+		typerr ("'%s' has void type", (int) namebuf (name));
 	chkinit (tp, init);
 	if (nscope == 0) {
 		emit_data (name, sc, tp, init);
@@ -790,7 +791,7 @@ struct node *init;
 			if (list != NULL && list->n_op == O_STR
 			    && ischar (tp->t_tp)) {
 				if (tp->t_size == 0)
-					tp->t_size = strnlen (list) + 1;
+					tp->t_size = strnlen (list->n_val) + 1;
 				return;
 			}
 			count = countitems (list);
@@ -815,7 +816,7 @@ struct node *init;
 		if (init->n_op == O_STR
 		    && ischar (tp->t_tp)) {
 			if (tp->t_size == 0)
-				tp->t_size = strnlen (init) + 1;
+				tp->t_size = strnlen (init->n_val) + 1;
 			return;
 		}
 		typerr ("array initializer requires braces");
@@ -842,14 +843,24 @@ struct node *e;
 		typerr ("bad initializer element");
 }
 
-/* length of the string referenced by an O_STR node */
+/* length of the string at offset off in the string file */
 int
-strnlen (n)
-struct node *n;
+strnlen (off)
+int off;
 {
-	int len = 0;
+	char buf[32];
+	int i, j, n, len;
 
-	while (sdata[n->n_val + len] != '\0')
-		++len;
+	len = 0;
+	for (i = 0; ; i += n) {
+		n = pread (strfd, buf, sizeof buf, (long) (off + i));
+		if (n <= 0)
+			break;
+		for (j = 0; j < n; ++j) {
+			++len;
+			if (buf[j] == '\0')
+				return len - 1;
+		}
+	}
 	return len;
 }

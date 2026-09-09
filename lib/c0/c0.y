@@ -112,15 +112,15 @@ spec	: SCLASS				{ sc_sclass ($1); }
 	| su_spec				{ sc_su ((struct type *) $1); }
 	;
 
-su_spec	: SOU IDENTIFIER '{'			{ $$ = (int) su_begin ($1, (char *) $2); }
+su_spec	: SOU IDENTIFIER '{'			{ $$ = (int) su_begin ($1, $2); }
 	  su_decls '}'			{ $$ = (int) su_end (); }
-	| SOU IDENTIFIER '{' '}'		{ su_begin ($1, (char *) $2);
+	| SOU IDENTIFIER '{' '}'		{ su_begin ($1, $2);
 						  $$ = (int) su_end (); }
-	| SOU '{'				{ $$ = (int) su_begin ($1, (char *) 0); }
+	| SOU '{'				{ $$ = (int) su_begin ($1, 0); }
 	  su_decls '}'			{ $$ = (int) su_end (); }
-	| SOU '{' '}'				{ su_begin ($1, (char *) 0);
+	| SOU '{' '}'				{ su_begin ($1, 0);
 						  $$ = (int) su_end (); }
-	| SOU IDENTIFIER			{ $$ = (int) su_ref ($1, (char *) $2); }
+	| SOU IDENTIFIER			{ $$ = (int) su_ref ($1, $2); }
 	;
 
 su_decls: su_decl
@@ -143,7 +143,7 @@ pointer	: MULOP				{ $$ = (int) dstar ($1); }
 	| pointer MULOP			{ $$ = (int) dptrn ((struct dcl *) $1, $2); }
 	;
 
-direct	: IDENTIFIER			{ $$ = (int) dname ((char *) $1); }
+direct	: IDENTIFIER			{ $$ = (int) dname ($1); }
 	| '(' declarator ')'			{ $$ = $2; }
 	| direct '(' ')'			{ $$ = (int) dfunc ((struct dcl *) $1,
 							  (struct symb *) 0); }
@@ -155,9 +155,9 @@ direct	: IDENTIFIER			{ $$ = (int) dname ((char *) $1); }
 							 (struct node *) $3); }
 	;
 
-idlist	: IDENTIFIER				{ $$ = (int) param1 ((char *) $1); }
+idlist	: IDENTIFIER				{ $$ = (int) param1 ($1); }
 	| idlist ',' IDENTIFIER		{ $$ = (int) paramn ((struct symb *) $1,
-							  (char *) $3); }
+							  $3); }
 	;
 
 init_decl_list: init_declarator
@@ -277,10 +277,10 @@ stmt	: e ';'					{ stmtx ((struct node *) $1); }
 	  stmt				{ swend (); sswitchend (); }
 	| BREAK ';'				{ stmtbrk (); }
 	| CONTINUE ';'				{ stmtcont (); }
-	| GOTO IDENTIFIER ';'			{ stmtgoto ((char *) $2); }
+	| GOTO IDENTIFIER ';'			{ stmtgoto ($2); }
 	| RETURN ';'				{ stmtret ((struct node *) 0); }
 	| RETURN e ';'				{ stmtret ((struct node *) $2); }
-	| IDENTIFIER ':'			{ stmtlabel ((char *) $1); } stmt
+	| IDENTIFIER ':'			{ stmtlabel ($1); } stmt
 	| CASE asgE ':'			{ stmtcase ((struct node *) $2); } stmt
 	| DEFAULT ':'			{ stmtdflt (); } stmt
 	| error ';'
@@ -425,7 +425,7 @@ postfix	: primary
 	| postfix '[' e ']'			{ $$ = (int) nindex ((struct node *) $1,
 							  (struct node *) $3); }
 	| postfix MBROP IDENTIFIER		{ $$ = (int) nmember ((struct node *) $1, $2,
-							  (char *) $3); }
+							  $3); }
 	| postfix INCOP			{ $$ = (int) ninc ($2, (struct node *) $1, 0); }
 	;
 
@@ -434,7 +434,7 @@ arglist	: asgE
 							  (struct node *) $3); }
 	;
 
-primary	: IDENTIFIER				{ $$ = (int) nname ((char *) $1); }
+primary	: IDENTIFIER				{ $$ = (int) nname ($1); }
 	| INTEGER				{ $$ = (int) ncon (); }
 	| STRING				{ $$ = (int) nstr ($1); }
 	| primary STRING			{ $$ = (int) nstrcat ((struct node *) $1,

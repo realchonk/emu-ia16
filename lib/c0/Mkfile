@@ -1,8 +1,8 @@
 NAME = c0
-ARGS = c0.ir c0.sym < test.c
+ARGS = c0.ir c0.str c0.sym < test.c
 
 YACC = ${EMU:F} ${.OBJDIR}/$./bin/yacc/yacc
-CFLAGS += -O1
+CFLAGS += -Og
 
 OBJS =	lex.o	\
 	main.o	\
@@ -25,6 +25,6 @@ parse.o: $./bin/yacc/yacc $./emu/emu c0.y c0.h lex.c main.c type.c \
 	rm -f y.tab.c
 
 clean-extra:
-	rm -f y.tab.c c0.ir c0.sym
+	rm -f y.tab.c c0.ir c0.str c0.sym
 
 .expand prog
