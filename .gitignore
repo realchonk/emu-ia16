@@ -8,3 +8,6 @@
 *.o
 *.elf
 *.a
+*.ir
+*.str
+*.sym
