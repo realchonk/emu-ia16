@@ -157,6 +157,8 @@ static int
 escape (ch)
 int ch;
 {
+	int n, nd;
+
 	switch (ch) {
 	case 'n':
 		return '\n';
@@ -177,9 +179,9 @@ int ch;
 	case '4':
 	case '5':
 	case '6':
-	case '7': {
-		int n = ch - '0', nd = 1;
-
+	case '7':
+		n = ch - '0';
+		nd = 1;
 		while (nd < 3) {
 			ch = get ();
 			if (ch < '0' || ch > '7') {
@@ -190,7 +192,6 @@ int ch;
 			++nd;
 		}
 		return n & 0xff;
-	}
 	default:
 		return ch;		/* \' \" \\ \? */
 	}
@@ -490,6 +491,30 @@ static int	peektok = -9;		/* -9: no token pushed back */
 static int	peeklval;
 static long	peeknumval;
 static int	peeknumbt;
+
+/* concatenate two string literals; returns the new index */
+int
+strconcat (ai, bi)
+int ai, bi;
+{
+	int ni = sidx;
+	int i;
+
+	for (i = ai; sdata[i] != '\0'; ++i) {
+		if (sidx >= (int) sizeof (sdata))
+			error ("too much string data");
+		sdata[sidx++] = sdata[i];
+	}
+	for (i = bi; sdata[i] != '\0'; ++i) {
+		if (sidx >= (int) sizeof (sdata))
+			error ("too much string data");
+		sdata[sidx++] = sdata[i];
+	}
+	if (sidx >= (int) sizeof (sdata))
+		error ("too much string data");
+	sdata[sidx++] = '\0';
+	return ni;
+}
 
 int
 lexpeek ()

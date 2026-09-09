@@ -326,8 +326,9 @@ char **pname;
 long *poff;
 {
 	struct symb *sp, *m;
+	struct type *t;
 	long v;
-	int ok;
+	int ok, sz;
 
 	switch (e->n_op) {
 	case O_STR:
@@ -348,10 +349,9 @@ long *poff;
 			*pname = sp->s_name;
 		*poff = 0;
 		return 1;
-	case O_INDEX: {
-		struct type *t = decay (e->n_l->n_tp);
-		int sz = isptr (t) ? tysize (t->t_tp) : 1;
-
+	case O_INDEX:
+		t = decay (e->n_l->n_tp);
+		sz = isptr (t) ? tysize (t->t_tp) : 1;
 		if (isarith (decay (e->n_r->n_tp))) {
 			/* constant indexing is enough for initializers */
 			v = fold (e->n_r, &ok);
@@ -367,14 +367,13 @@ long *poff;
 			}
 		}
 		return 0;
-	}
 	case O_MEMBER:
 	case O_ARROW:
 		m = (struct symb *) e->n_r;
 		if (e->n_op == O_ARROW)
 			return 0;
 		if (constaddr (e->n_l, pname, poff)) {
-			*poff += m->s_offs;
+			*poff += m->s_sc;
 			return 1;
 		}
 		return 0;
@@ -416,7 +415,7 @@ struct node *e;
 	switch (tp->t_op) {
 	case T_ARY:
 		if (e->n_op == O_STR
-		    && (tp->t_tp->t_op & BT_MASK) == BT_CHAR) {
+		    && ischar (tp->t_tp)) {
 			sz = strnlen (e);
 			wbyte (0x01);
 			wword (sz + 1);
@@ -437,7 +436,7 @@ struct node *e;
 		i = 0;
 		for (m = tp->t_memb; m != NULL && i < niitems;
 		     m = m->s_next) {
-			ipad (m->s_offs);
+			ipad (m->s_sc);
 			emit_init (m->s_tp, iitems[i++]);
 			if (tp->t_op == T_UNION)
 				break;
@@ -678,7 +677,7 @@ struct node *e;
 			emaddr (e->n_l);
 		else
 			emexpr (e->n_l, NULL);
-		wconst ((long) m->s_offs, btype (BT_INT));
+		wconst ((long) m->s_sc, btype (BT_INT));
 		return;
 	default:
 		/* not an lvalue; the type checker complained already */
@@ -872,7 +871,7 @@ int ntab;
 		r = &recs[i];
 		switch (r->kind) {
 		case S_EXPR:
-			emexpr (r->r_e, NULL);
+			emexpr (r->u.s.e, NULL);
 			break;
 		case S_RET:
 			wbyte ('r');
@@ -880,41 +879,41 @@ int ntab;
 		case S_RETV:
 			wbyte ('R');
 			wty (tp->t_tp, tysize (tp->t_tp));
-			emexpr (r->r_e, NULL);
+			emexpr (r->u.s.e, NULL);
 			break;
 		case S_LABEL:
 			wbyte ('L');
-			wsym (r->r_lab);
+			wsym (r->u.s.lab);
 			break;
 		case S_JUMP:
 			wbyte ('J');
-			wsym (r->r_lab);
+			wsym (r->u.s.lab);
 			break;
 		case S_BR:
 			wbyte ('B');
-			wsym (r->r_lab);
-			wsym (r->r_lf);
-			emexpr (r->r_e, NULL);
+			wsym (r->u.s.lab);
+			wsym (r->u.s.lf);
+			emexpr (r->u.s.e, NULL);
 			break;
 		case S_SW:
-			for (c = r->r_cases; c != NULL; c = c->next) {
+			for (c = r->u.w.cases; c != NULL; c = c->next) {
 				wbyte ('B');
 				wsym (c->lab);
 				if (c->next != NULL)
 					wsym (c->next->lab);
-				else if (r->r_dflt != NULL)
-					wsym (r->r_dflt);
+				else if (r->u.w.dflt != NULL)
+					wsym (r->u.w.dflt);
 				else
-					wsym (r->r_lf);
+					wsym (r->u.s.lf);
 				wbyte ('b');
 				wty (btype (BT_INT), 2);
 				wbyte ('E');
-				emexpr (r->r_t, NULL);
+				emexpr (r->u.w.t, NULL);
 				wconst ((long) c->val, btype (BT_INT));
 			}
-			if (r->r_dflt != NULL) {
+			if (r->u.w.dflt != NULL) {
 				wbyte ('J');
-				wsym (r->r_dflt);
+				wsym (r->u.w.dflt);
 			}
 			break;
 		}

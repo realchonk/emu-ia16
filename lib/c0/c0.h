@@ -17,42 +17,42 @@ extern int	firfd, symfd;
  */
 
 /* lex.c */
-#define	NNAME	6144			/* identifier arena, bytes */
-#define	NINT	640			/* interned identifiers */
+#define	NNAME	3584			/* identifier arena, bytes */
+#define	NINT	512			/* interned identifiers */
 #define	NSDATA	1280			/* string literal bytes */
 
 /* type.c */
-#define	NTYPE	208			/* type pool entries */
+#define	NTYPE	256			/* type pool entries */
 
 /* decl.c */
-#define	NSYMB	384			/* symbol pool entries */
+#define	NSYMB	416			/* symbol pool entries */
 #define	NSCOPE	16			/* block nesting depth */
 #define	NSU	16			/* struct/union nesting depth */
 #define	NDCL	184			/* declarator tree nodes */
 #define	NDSPEC	80			/* type name specifiers */
 
 /* expr.c */
-#define	NNODE	720			/* expression tree nodes */
+#define	NNODE	704			/* expression tree nodes */
 #define	NLCON	16			/* long constants (O_LCON) */
 
 /* stmt.c */
-#define	NSREC	256			/* lowered statements per function */
+#define	NSREC	448			/* lowered statements per function */
 #define	NCASE	60			/* case labels per file */
 #define	NLAB	64			/* labels per function */
 #define	NNEST	32			/* nested loops, ifs, switches */
 #define	NSW	8			/* nested switches */
 #define	NLOC	128			/* params and locals per function */
-#define	NLABCH	320			/* label name arena, bytes */
+#define	NLABCH	1152			/* label name arena, bytes per function */
 
 /* emit.c */
-#define	NSYMNM	256			/* names in the symbol file */
+#define	NSYMNM	384			/* names in the symbol file */
 #define	NNAMEAR	1024			/* generated names, bytes */
 #define	NSTRDEF	96			/* distinct string literals */
 #define	NSTATIC	48			/* static locals */
 #define	NITEM	128			/* flattened initializer items */
 
 /* parse.o (y.tab.c) */
-#define	YYMAXDEPTH	64		/* parser stack depth */
+#define	YYMAXDEPTH	448		/* parser stack depth */
 
 /*
  * Token numbers.  These MUST match the %token declarations in c0.y.
@@ -186,11 +186,9 @@ struct symb {
 	char		*s_name;
 	struct type	*s_tp;
 	int		 s_sc;		/* SC_*; struct/union members store
-					   their byte offset here instead
-					   (s_offs), as the two uses never
-					   coincide */
+					   their byte offset here, as the
+					   two uses never coincide */
 };
-#define	s_offs	s_sc
 
 struct node {
 	int		 n_op;
@@ -219,9 +217,6 @@ struct dcl {
 		struct node	*d_size;	/* D_ARY */
 	} d_u;
 };
-#define	d_name	d_u.d_name
-#define	d_params d_u.d_params
-#define	d_size	d_u.d_size
 
 /* declaration specifiers */
 struct dspec {
@@ -253,12 +248,6 @@ struct srec {
 		} w;
 	} u;
 };
-#define	r_e	u.s.e
-#define	r_lab	u.s.lab
-#define	r_lf	u.s.lf
-#define	r_t	u.w.t
-#define	r_cases	u.w.cases
-#define	r_dflt	u.w.dflt
 
 #define	S_EXPR		0
 #define	S_RET		1
@@ -284,11 +273,12 @@ __dead void error ();
 void	 typerr ();
 void	 mini ();			 /* tiny formatter: %s %d %c %o */
 void	 oputc (), oputs ();	 /* write bytes to a file descriptor */
-int	 c0getc (), c0ungetc ();
+int	 c0getc (), c0ungetc (), strconcat ();
 
 /* type.c */
-struct type	*mktype (), *btype (), *decay (), *usual ();
-int		 fixbt (), isarith (), isptr (), isscalar (), compat (),
+struct type	*mktype (), *btype (), *ptrtype (), *decay (), *usual ();
+int		 fixbt (), isarith (), ischar (), isptr (), isscalar (),
+		 compat (),
 		 tysize ();
 
 /* decl.c */
@@ -302,7 +292,7 @@ struct dcl	*dstar (), *dptrn (), *dchain (), *dname (), *dfunc (),
 struct dspec	*tn_bt (), *tn_td (), *tn_su (), *tn_cat ();
 char		*dclname ();
 int		 curd_sc (), getlocals (), strnlen ();
-void		 dcl_reset (), dclpool_reset (), sc_sclass (), sc_type (),
+void		 dcl_reset (), sc_sclass (), sc_type (),
 		 sc_const (), sc_su (), sc_td (), member (), bindparam (),
 		 dclinst (), chkinit (), blkpush (), blkpop ();
 
@@ -310,7 +300,8 @@ void		 dcl_reset (), dclpool_reset (), sc_sclass (), sc_type (),
 struct node	*nname (), *ncon (), *nstr (), *nbina (), *nlog (),
 		 *nasgn (), *ncond (), *nun (), *naddr (), *ninc (),
 		 *nindex (), *nmember (), *ncall (), *ncast (), *ncomma (),
-		 *nsize (), *ilist (), *exproper (), *nconst (), *nlocal ();
+		 *nsize (), *ilist (), *exproper (), *nconst (), *nlocal (),
+		 *nstrcat ();
 long		 fold ();
 void		 expr_reset ();
 

@@ -53,10 +53,10 @@ int kind;
 		error ("function too large");
 	r = &srecs[nsrecs++];
 	r->kind = kind;
-	r->r_e = NULL;
-	r->r_lab = r->r_lf = r->r_dflt = NULL;
-	r->r_t = NULL;
-	r->r_cases = NULL;
+	r->u.s.e = NULL;
+	r->u.s.lab = r->u.s.lf = r->u.w.dflt = NULL;
+	r->u.w.t = NULL;
+	r->u.w.cases = NULL;
 	return r;
 }
 
@@ -64,14 +64,14 @@ static void
 addlab (lab)
 char *lab;
 {
-	addrec (S_LABEL)->r_lab = lab;
+	addrec (S_LABEL)->u.s.lab = lab;
 }
 
 static void
 addjump (lab)
 char *lab;
 {
-	addrec (S_JUMP)->r_lab = lab;
+	addrec (S_JUMP)->u.s.lab = lab;
 }
 
 static char *
@@ -182,8 +182,8 @@ fdefend ()
 	curfunc = NULL;
 	dcl_reset ();
 	expr_reset ();
-	dclpool_reset ();
 	nsrecs = 0;
+	nlabaren = 0;		/* labels died with the emission */
 	ncases = 0;
 	nbrk = ncont = 0;
 	nloopst = 0;
@@ -225,7 +225,7 @@ struct node *e;
 
 	exproper (e);
 	r = addrec (S_EXPR);
-	r->r_e = e;
+	r->u.s.e = e;
 }
 
 void
@@ -276,9 +276,9 @@ struct node *cond;
 	++nif;
 
 	r = addrec (S_BR);
-	r->r_lab = lt;
-	r->r_lf = lf;
-	r->r_e = cond;
+	r->u.s.lab = lt;
+	r->u.s.lf = lf;
+	r->u.s.e = cond;
 	addlab (lt);
 }
 
@@ -321,9 +321,9 @@ struct node *cond;
 
 	addlab (lc);
 	r = addrec (S_BR);
-	r->r_lab = lb;
-	r->r_lf = brklab[nbrk - 1];
-	r->r_e = cond;
+	r->u.s.lab = lb;
+	r->u.s.lf = brklab[nbrk - 1];
+	r->u.s.e = cond;
 	addlab (lb);
 }
 
@@ -363,9 +363,9 @@ struct node *cond;
 	--nloopst;
 	addlab (contlab[ncont - 1]);
 	r = addrec (S_BR);
-	r->r_lab = loopst[nloopst].lab1;
-	r->r_lf = brklab[nbrk - 1];
-	r->r_e = cond;
+	r->u.s.lab = loopst[nloopst].lab1;
+	r->u.s.lf = brklab[nbrk - 1];
+	r->u.s.e = cond;
 	addlab (brklab[--nbrk]);
 	--ncont;
 }
@@ -383,7 +383,7 @@ struct node *e1, *e2, *e3;
 
 	if (e1 != NULL) {
 		r = addrec (S_EXPR);
-		r->r_e = e1;
+		r->u.s.e = e1;
 	}
 	lc = newlab ();
 	lb = newlab ();
@@ -398,9 +398,9 @@ struct node *e1, *e2, *e3;
 	addlab (lc);
 	if (e2 != NULL) {
 		r = addrec (S_BR);
-		r->r_lab = lb;
-		r->r_lf = brklab[nbrk - 1];
-		r->r_e = e2;
+		r->u.s.lab = lb;
+		r->u.s.lf = brklab[nbrk - 1];
+		r->u.s.e = e2;
 	} else {
 		addjump (lb);
 	}
@@ -416,7 +416,7 @@ sforend ()
 	addlab (loopst[nloopst].lab1);		/* .Ls */
 	if (loopst[nloopst].step != NULL) {
 		r = addrec (S_EXPR);
-		r->r_e = loopst[nloopst].step;
+		r->u.s.e = loopst[nloopst].step;
 	}
 	addjump (loopst[nloopst].lab2);		/* .Lc */
 	addlab (brklab[--nbrk]);
@@ -452,17 +452,17 @@ struct node *cond;
 	t = nlocal (sp);
 
 	r = addrec (S_EXPR);
-	r->r_e = nasgn ('=', t, cond);
+	r->u.s.e = nasgn ('=', t, cond);
 
 	r = addrec (S_SW);
-	r->r_t = t;
-	r->r_lf = newlab ();			/* .Le */
+	r->u.w.t = t;
+	r->u.s.lf = newlab ();			/* .Le */
 	swst[nsw] = r;
-	swtail[nsw] = &r->r_cases;
+	swtail[nsw] = &r->u.w.cases;
 	swdflt[nsw] = NULL;
-	swendlab[nsw] = r->r_lf;
+	swendlab[nsw] = r->u.s.lf;
 	++nsw;
-	brklab[nbrk++] = r->r_lf;
+	brklab[nbrk++] = r->u.s.lf;
 }
 
 void
@@ -542,7 +542,7 @@ struct node *e;
 	if (!compat (rt, decay (e->n_tp)))
 		typerr ("incompatible return value");
 	r = addrec (S_RETV);
-	r->r_e = e;
+	r->u.s.e = e;
 }
 
 void

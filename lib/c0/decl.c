@@ -150,12 +150,20 @@ static struct {
 	struct type	*tp;
 } curd;
 
+static int	 ndpool;			/* declarator pool high water */
+static int	 ndspool;			/* type name pool high water */
+
+/* reset the accumulated specifiers; the declarator and type name
+   pools are recycled too, as their trees are consumed by the actions
+   that precede every call of this */
 void
 dcl_reset ()
 {
 	curd.sc = 0;
 	curd.bt = 0;
 	curd.tp = NULL;
+	ndpool = 0;
+	ndspool = 0;
 }
 
 void
@@ -227,6 +235,16 @@ static struct {
 } sustack[NSU];
 static int nsu;
 
+/*
+ * A struct body is a nested declaration: the specifiers accumulated
+ * for the enclosing declaration must survive the member declarations
+ * inside (su_decl resets them after each member).
+ */
+static struct {
+	int		 sc, bt;
+	struct type	*tp;
+} curdsave[NSU];
+
 static struct type *
 tagfind (name)
 char *name;
@@ -276,6 +294,10 @@ char *tag;
 
 	if (nsu >= NSU)
 		error ("structs nested too deeply");
+	curdsave[nsu].sc = curd.sc;
+	curdsave[nsu].bt = curd.bt;
+	curdsave[nsu].tp = curd.tp;
+	dcl_reset ();
 	sustack[nsu].su = tp;
 	sustack[nsu].tail = &tp->t_memb;
 	sustack[nsu].size = 0;
@@ -295,6 +317,9 @@ su_end ()
 	--nsu;
 	tp = sustack[nsu].su;
 	tp->t_size = sustack[nsu].size;
+	curd.sc = curdsave[nsu].sc;
+	curd.bt = curdsave[nsu].bt;
+	curd.tp = curdsave[nsu].tp;
 	return tp;
 }
 
@@ -350,14 +375,14 @@ struct dcl *d;
 
 	sz = tysize (tp);
 	if (sustack[nsu - 1].isunion) {
-		m->s_offs = 0;
+		m->s_sc = 0;
 		if (sz > sustack[nsu - 1].size)
 			sustack[nsu - 1].size = sz;
 	} else {
 		align = sz > 1 ? 2 : 1;
 		sustack[nsu - 1].offs =
 			(sustack[nsu - 1].offs + align - 1) & ~(align - 1);
-		m->s_offs = sustack[nsu - 1].offs;
+		m->s_sc = sustack[nsu - 1].offs;
 		sustack[nsu - 1].offs += sz;
 		sustack[nsu - 1].size = sustack[nsu - 1].offs;
 	}
@@ -366,7 +391,6 @@ struct dcl *d;
 /* ---------------- declarator parse trees ---------------- */
 
 static struct dcl	dpool[NDCL];
-static int		ndpool;
 
 static struct dcl *
 mkdcl (op)
@@ -379,9 +403,9 @@ int op;
 	d = &dpool[ndpool++];
 	d->d_op = op;
 	d->d_l = NULL;
-	d->d_size = NULL;
-	d->d_name = NULL;
-	d->d_params = NULL;
+	d->d_u.d_size = NULL;
+	d->d_u.d_name = NULL;
+	d->d_u.d_params = NULL;
 	return d;
 }
 
@@ -426,7 +450,7 @@ char *name;
 {
 	struct dcl *d = mkdcl (D_NAME);
 
-	d->d_name = name;
+	d->d_u.d_name = name;
 	return d;
 }
 
@@ -438,7 +462,7 @@ struct symb *params;
 	struct dcl *f = mkdcl (D_FUNC);
 
 	f->d_l = d;
-	f->d_params = params;
+	f->d_u.d_params = params;
 	return f;
 }
 
@@ -450,7 +474,7 @@ struct node *size;
 	struct dcl *a = mkdcl (D_ARY);
 
 	a->d_l = d;
-	a->d_size = size;
+	a->d_u.d_size = size;
 	return a;
 }
 
@@ -495,12 +519,12 @@ struct dcl *d;
 		case D_NAME:
 			return t;
 		case D_PTR:
-			t = mktype (T_PTR, t, 0, NULL, NULL);
+			t = ptrtype (t);
 			break;
 		case D_ARY:
 			n = 0;
-			if (d->d_size != NULL) {
-				v = fold (d->d_size, &ok);
+			if (d->d_u.d_size != NULL) {
+				v = fold (d->d_u.d_size, &ok);
 				if (!ok) {
 					typerr ("array size is not constant");
 					n = 1;
@@ -513,7 +537,7 @@ struct dcl *d;
 			t = mktype (T_ARY, t, n, NULL, NULL);
 			break;
 		case D_FUNC:
-			t = mktype (T_FUNC, t, 0, d->d_params, NULL);
+			t = mktype (T_FUNC, t, 0, d->d_u.d_params, NULL);
 			break;
 		default:
 			error ("internal: bad declarator");
@@ -529,13 +553,12 @@ struct dcl *d;
 {
 	while (d != NULL && d->d_op != D_NAME)
 		d = d->d_l;
-	return d == NULL ? NULL : d->d_name;
+	return d == NULL ? NULL : d->d_u.d_name;
 }
 
 /* ---------------- type names (casts, sizeof) ---------------- */
 
 static struct dspec	dspool[NDSPEC];
-static int		ndspool;
 
 static struct dspec *
 mkdspec ()
@@ -543,13 +566,6 @@ mkdspec ()
 	if (ndspool >= NDSPEC)
 		error ("too many type names");
 	return &dspool[ndspool++];
-}
-
-void
-dclpool_reset ()
-{
-	ndpool = 0;
-	ndspool = 0;
 }
 
 struct dspec *
@@ -620,6 +636,12 @@ struct dcl *d;
 	struct type *tp = dcltype (curbase (), d);
 	char *name = dclname (d);
 	struct symb *p;
+
+	/* K&R: array and function parameters arrive as pointers */
+	if (tp->t_op == T_ARY)
+		tp = ptrtype (tp->t_tp);
+	else if (tp->t_op == T_FUNC)
+		tp = ptrtype (tp);
 
 	if (name == NULL) {
 		typerr ("parameter name omitted");
@@ -766,7 +788,7 @@ struct node *init;
 		list = init->n_l;
 		if (tp->t_op == T_ARY) {
 			if (list != NULL && list->n_op == O_STR
-			    && (tp->t_tp->t_op & BT_MASK) == BT_CHAR) {
+			    && ischar (tp->t_tp)) {
 				if (tp->t_size == 0)
 					tp->t_size = strnlen (list) + 1;
 				return;
@@ -791,7 +813,7 @@ struct node *init;
 
 	if (tp->t_op == T_ARY) {
 		if (init->n_op == O_STR
-		    && (tp->t_tp->t_op & BT_MASK) == BT_CHAR) {
+		    && ischar (tp->t_tp)) {
 			if (tp->t_size == 0)
 				tp->t_size = strnlen (init) + 1;
 			return;

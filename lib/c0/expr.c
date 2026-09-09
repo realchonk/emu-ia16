@@ -205,9 +205,19 @@ int idx;
 {
 	struct node *n;
 
-	n = mknode (O_STR, mktype (T_PTR, btype (BT_CHAR), 0, NULL, NULL),
+	n = mknode (O_STR, ptrtype (btype (BT_CHAR)),
 		    NULL, NULL);
 	n->n_val = idx;
+	return n;
+}
+
+/* adjacent string literals concatenate into one */
+struct node *
+nstrcat (n, idx)
+struct node *n;
+int idx;
+{
+	n->n_val = strconcat (n->n_val, idx);
 	return n;
 }
 
@@ -422,15 +432,14 @@ struct node *e;
 	}
 	t = e->n_tp;
 	if (e->n_op == O_NAME && t != NULL && t->t_op == T_FUNC)
-		return mknode (O_ADDR, mktype (T_PTR, t, 0, NULL, NULL),
-			       e, NULL);
+		return mknode (O_ADDR, ptrtype (t), e, NULL);
 	if (!islval (e)) {
 		typerr ("cannot take the address of this expression");
 		return mknode (O_ADDR, btype (BT_INT), e, NULL);
 	}
 	if (t->t_op == T_ARY)		/* &array: pointer to element */
 		t = t->t_tp;
-	return mknode (O_ADDR, mktype (T_PTR, t, 0, NULL, NULL), e, NULL);
+	return mknode (O_ADDR, ptrtype (t), e, NULL);
 }
 
 struct node *

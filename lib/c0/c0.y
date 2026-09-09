@@ -294,7 +294,7 @@ ifcond	: '(' e ')'				{ stmtcond ((struct node *) $2);
 						  sif ((struct node *) $2); }
 	;
 
-fe	: /* empty */
+fe	: /* empty */				{ $$ = 0; }
 	| e
 	;
 
@@ -320,12 +320,8 @@ stmts	: stmt
 	| stmts stmt
 	;
 
-/* nested compound statements hold statements only */
-compound: '{'				{ blkpush (); } nblock '}'	{ blkpop (); }
-	;
-
-nblock	: stmts
-	| /* empty */
+/* K&R: any block may open with declarations, then statements */
+compound: '{'				{ blkpush (); } block '}'	{ blkpop (); }
 	;
 
 /*
@@ -441,5 +437,7 @@ arglist	: asgE
 primary	: IDENTIFIER				{ $$ = (int) nname ((char *) $1); }
 	| INTEGER				{ $$ = (int) ncon (); }
 	| STRING				{ $$ = (int) nstr ($1); }
+	| primary STRING			{ $$ = (int) nstrcat ((struct node *) $1,
+							  $2); }
 	| '(' e ')'				{ $$ = $2; }
 	;
