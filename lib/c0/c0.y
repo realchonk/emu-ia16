@@ -89,8 +89,9 @@ xdef	: datadecl
 	;
 
 /*
- * External and local declarations.  At the outer level the type may be
- * omitted altogether (implicit int).
+ * Declarations.  At the outer level the type may be omitted
+ * altogether (implicit int); in blocks a specifier is required, as
+ * an implicit int would be ambiguous with expression statements.
  */
 datadecl: specs ';'				{ dcl_reset (); }
 	| specs init_decl_list ';'		{ dcl_reset (); }
@@ -114,16 +115,12 @@ spec	: SCLASS				{ sc_sclass ($1); }
 
 su_spec	: SOU IDENTIFIER '{'			{ $$ = (int) su_begin ($1, $2); }
 	  su_decls '}'			{ $$ = (int) su_end (); }
-	| SOU IDENTIFIER '{' '}'		{ su_begin ($1, $2);
-						  $$ = (int) su_end (); }
 	| SOU '{'				{ $$ = (int) su_begin ($1, 0); }
 	  su_decls '}'			{ $$ = (int) su_end (); }
-	| SOU '{' '}'				{ su_begin ($1, 0);
-						  $$ = (int) su_end (); }
 	| SOU IDENTIFIER			{ $$ = (int) su_ref ($1, $2); }
 	;
 
-su_decls: su_decl
+su_decls: /* empty */
 	| su_decls su_decl
 	;
 
@@ -134,9 +131,17 @@ su_dlist: declarator				{ member ((struct dcl *) $1); }
 	| su_dlist ',' declarator		{ member ((struct dcl *) $3); }
 	;
 
+/*
+ * Declarators cover abstract ones too: the name may be omitted
+ * (`declarator: pointer`) and `()` may appear without one, so casts
+ * reuse the same grammar; a nameless declarator in a declaration is
+ * caught semantically.
+ */
 declarator: pointer direct			{ $$ = (int) dchain ((struct dcl *) $1,
 							  (struct dcl *) $2); }
 	| direct				{ $$ = $1; }
+	| pointer				{ $$ = (int) dchain ((struct dcl *) $1,
+							  (struct dcl *) 0); }
 	;
 
 pointer	: MULOP				{ $$ = (int) dstar ($1); }
@@ -145,6 +150,8 @@ pointer	: MULOP				{ $$ = (int) dstar ($1); }
 
 direct	: IDENTIFIER			{ $$ = (int) dname ($1); }
 	| '(' declarator ')'			{ $$ = $2; }
+	| '(' ')'				{ $$ = (int) dfunc ((struct dcl *) 0,
+							  (struct symb *) 0); }
 	| direct '(' ')'			{ $$ = (int) dfunc ((struct dcl *) $1,
 							  (struct symb *) 0); }
 	| direct '(' idlist ')'		{ $$ = (int) dfunc ((struct dcl *) $1,
@@ -214,7 +221,7 @@ pdlist	: declarator				{ bindparam ((struct dcl *) $1); }
  */
 type_name: tn_specs				{ $$ = (int) tn_type ((struct dspec *) $1,
 							   (struct dcl *) 0); }
-	| tn_specs abs_decl			{ $$ = (int) tn_type ((struct dspec *) $1,
+	| tn_specs declarator			{ $$ = (int) tn_type ((struct dspec *) $1,
 							   (struct dcl *) $2); }
 	;
 
@@ -227,24 +234,6 @@ tn_spec	: TYPEKW				{ $$ = (int) tn_bt ($1); }
 	| CONST					{ $$ = (int) tn_bt (BT_CONST); }
 	| TYPENAME				{ $$ = (int) tn_td ((struct symb *) $1); }
 	| su_spec				{ $$ = (int) tn_su ((struct type *) $1); }
-	;
-
-abs_decl: pointer				{ $$ = (int) dchain ((struct dcl *) $1,
-							  (struct dcl *) 0); }
-	| pointer direct_abs			{ $$ = (int) dchain ((struct dcl *) $1,
-							  (struct dcl *) $2); }
-	| direct_abs				{ $$ = $1; }
-	;
-
-direct_abs: '(' abs_decl ')'		{ $$ = $2; }
-	| '(' ')'				{ $$ = (int) dfunc ((struct dcl *) 0,
-							  (struct symb *) 0); }
-	| direct_abs '(' ')'			{ $$ = (int) dfunc ((struct dcl *) $1,
-							  (struct symb *) 0); }
-	| direct_abs '[' ']'			{ $$ = (int) dary ((struct dcl *) $1,
-							 (struct node *) 0); }
-	| direct_abs '[' asgE ']'		{ $$ = (int) dary ((struct dcl *) $1,
-							 (struct node *) $3); }
 	;
 
 /*
