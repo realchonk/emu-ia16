@@ -329,6 +329,9 @@ char *
 refill(p)
 register char *p;
 {
+	int n, tlin;
+	char *tfil;
+
 	/* dump buffer.  save chars from inp to p.  read into buffer at pbuf,
 	 * contiguous with p.  update pointers, return new p.
 	 */
@@ -376,8 +379,9 @@ register char *p;
 			/* end of #include file */
 			if (ifno == 0) { /* end of input */
 				if (plvl != 0) {
-					int n = plvl, tlin = lineno[ifno];
-					char *tfil = fnames[ifno];
+					n = plvl;
+					tlin = lineno[ifno];
+					tfil = fnames[ifno];
 
 					lineno[ifno] = maclin;
 					fnames[ifno] = macfil;
@@ -1144,6 +1148,7 @@ control(p)
 register char *p;
 { /* find and handle preprocessor control lines */
 	register struct symtab *np;
+	char *cp, *cp2, *savestring ();
 	for (;;) {
 		fasscan ();
 		p = cotoken (p);
@@ -1206,7 +1211,6 @@ register char *p;
 			p = newp;
 		} else if (np == lneloc) { /* line */
 			if (walkifstack () && pflag == 0) {
-				char *cp, *cp2, *savestring ();
 
 				outp = inp = p;
 				*--outp = '#';
