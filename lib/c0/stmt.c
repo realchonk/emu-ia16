@@ -94,7 +94,7 @@ struct dcl *d;
 	int np = 0;
 
 	if (name == 0) {
-		typerr ("function name omitted");
+		typerr ("no func name");
 		name = intern ("?");
 	}
 	if (tp->t_op != T_FUNC) {
@@ -107,9 +107,9 @@ struct dcl *d;
 	sp = lookup (name);
 	if (sp != NULL) {
 		if (sp->s_tp->t_op != T_FUNC)
-			typerr ("redeclaration of '%s'", (int) namebuf (name));
+			typerr ("redecl %s", (int) namebuf (name));
 		else if (!compat (sp->s_tp->t_tp, tp->t_tp))
-			typerr ("conflicting return type for '%s'", (int) namebuf (name));
+			typerr ("return clash %s", (int) namebuf (name));
 		sp->s_tp = tp;
 	} else {
 		sp = install (name, sc == 0 ? SC_EXTERN : sc);
@@ -129,7 +129,7 @@ struct dcl *d;
 		plist[np++] = p;
 	while (--np >= 0)
 		if (insparam (plist[np]->s_name) == NULL)
-			typerr ("duplicate parameter '%s'",
+			typerr ("dup param %s",
 				(int) namebuf (plist[np]->s_name));
 	nargsloc = nlocidx;
 }
@@ -144,7 +144,7 @@ fdefend ()
 			if (golist[i] == labels[j])
 				break;
 		if (j == nlabels)
-			typerr ("undefined label '%s'", (int) namebuf (golist[i]));
+			typerr ("undef label %s", (int) namebuf (golist[i]));
 	}
 	emit_ftail (curfunc->s_tp);
 	blkpop ();
@@ -201,7 +201,7 @@ struct node *e;
 {
 	exproper (e);
 	if (e != NULL && !isscalar (decay (e->n_tp)))
-		typerr ("controlling expression must be scalar");
+		typerr ("cond must be scalar");
 }
 
 void
@@ -212,7 +212,7 @@ struct node *e1, *e2, *e3;
 	exproper (e2);
 	exproper (e3);
 	if (e2 != NULL && !isscalar (decay (e2->n_tp)))
-		typerr ("controlling expression must be scalar");
+		typerr ("cond must be scalar");
 }
 
 void
@@ -221,7 +221,7 @@ struct node *e;
 {
 	exproper (e);
 	if (e != NULL && !isarith (decay (e->n_tp)))
-		typerr ("switch expression must be arithmetic");
+		typerr ("switch needs arith");
 }
 
 /*
@@ -427,11 +427,11 @@ struct node *e;
 		return;
 	}
 	if (nsw == 0)
-		error ("internal: switch stack underflow");
+		error ("switch stack under");
 	if (e != NULL) {
 		v = fold (exproper (e), &ok);
 		if (!ok) {
-			typerr ("case label is not constant");
+			typerr ("case not const");
 			v = 0;
 		}
 	} else
@@ -456,7 +456,7 @@ stmtdflt ()
 		return;
 	}
 	if (nsw == 0)
-		error ("internal: switch stack underflow");
+		error ("switch stack under");
 	swst[nsw - 1].dflt = newlab ();
 	emlab (swst[nsw - 1].dflt);
 }
@@ -493,7 +493,7 @@ struct node *e;
 		return;
 	}
 	if (!compat (rt, decay (e->n_tp)))
-		typerr ("incompatible return value");
+		typerr ("bad return");
 	emret (rt, e);
 	expr_reset ();
 }
@@ -515,7 +515,7 @@ int name;
 
 	for (i = 0; i < nlabels; ++i)
 		if (labels[i] == name) {
-			typerr ("duplicate label '%s'", (int) namebuf (name));
+			typerr ("dup label %s", (int) namebuf (name));
 			return;
 		}
 	if (nlabels < NLAB)
@@ -527,7 +527,7 @@ void
 stmtbrk ()
 {
 	if (loopdepth == 0 && swdepth == 0) {
-		typerr ("break outside of loop or switch");
+		typerr ("bad break");
 		return;
 	}
 	emjump (brklab[nbrk - 1]);
@@ -537,7 +537,7 @@ void
 stmtcont ()
 {
 	if (loopdepth == 0) {
-		typerr ("continue outside of loop");
+		typerr ("bad continue");
 		return;
 	}
 	emjump (contlab[ncont - 1]);

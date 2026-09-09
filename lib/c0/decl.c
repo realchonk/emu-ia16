@@ -187,11 +187,17 @@ dcl_reset ()
 }
 
 void
+sc_const ()
+{
+	curd.bt |= BT_CONST;
+}
+
+void
 sc_sclass (sc)
 int sc;
 {
 	if (curd.sc != 0)
-		typerr ("multiple storage classes");
+		typerr ("two sclasses");
 	curd.sc = sc;
 }
 
@@ -202,12 +208,6 @@ int bt;
 	if (curd.tp != NULL)
 		typerr ("too many types");
 	curd.bt |= bt;
-}
-
-void
-sc_const ()
-{
-	curd.bt |= BT_CONST;
 }
 
 void
@@ -307,7 +307,7 @@ int tag;
 	if (tag != 0) {
 		tp = tagtype (sou, tag);
 		if (tp->t_memb != 0)
-			typerr ("redefinition of '%s'", (int) namebuf (tag));
+			typerr ("redef %s", (int) namebuf (tag));
 		tp->t_op = sou;
 	} else
 		tp = mktype (sou, NULL, 0, NULL, NULL);
@@ -333,7 +333,7 @@ su_end ()
 	struct type *tp;
 
 	if (nsu == 0)
-		error ("internal: struct stack underflow");
+		error ("struct stack under");
 	--nsu;
 	tp = sustack[nsu].su;
 	tp->t_size = sustack[nsu].size;
@@ -365,24 +365,24 @@ struct dcl *d;
 	int sz, align;
 
 	if (nsu == 0) {
-		typerr ("member outside struct");
+		typerr ("member outside su");
 		return;
 	}
 	if (name == 0) {
-		typerr ("member name omitted");
+		typerr ("no member name");
 		return;
 	}
 	if (tp->t_op == T_FUNC) {
-		typerr ("'%s' has function type", (int) namebuf (name));
+		typerr ("%s is a function", (int) namebuf (name));
 		return;
 	}
 	if ((tp->t_op == T_STRUCT || tp->t_op == T_UNION)
 	    && tp->t_memb == NULL) {
-		typerr ("member '%s' has incomplete type", (int) namebuf (name));
+		typerr ("member %s incomplete", (int) namebuf (name));
 		return;
 	}
 	if (scopefind (sustack[nsu - 1].su->t_memb, name) != NULL) {
-		typerr ("duplicate member '%s'", (int) namebuf (name));
+		typerr ("dup member %s", (int) namebuf (name));
 		return;
 	}
 
@@ -419,7 +419,7 @@ int op;
 	struct dcl *d;
 
 	if (ndpool >= NDCL)
-		error ("declarator too complex");
+		error ("declarator complex");
 	d = &dpool[ndpool++];
 	d->d_op = op;
 	d->d_l = NULL;
@@ -434,7 +434,7 @@ dstar (op)
 int op;
 {
 	if (op != '*')
-		typerr ("expected '*' in declarator");
+		typerr ("want * in declarator");
 	return mkdcl (D_PTR);
 }
 
@@ -446,7 +446,7 @@ int op;
 	struct dcl *p;
 
 	if (op != '*')
-		typerr ("expected '*' in declarator");
+		typerr ("want * in declarator");
 	p = mkdcl (D_PTR);
 	p->d_l = d;
 	return p;
@@ -546,7 +546,7 @@ struct dcl *d;
 			if (d->d_u.d_size != NULL) {
 				v = fold (d->d_u.d_size, &ok);
 				if (!ok) {
-					typerr ("array size is not constant");
+					typerr ("size not const");
 					n = 1;
 				} else if (v < 0 || v > 65535) {
 					typerr ("invalid array size");
@@ -664,12 +664,12 @@ struct dcl *d;
 		tp = ptrtype (tp);
 
 	if (name == 0) {
-		typerr ("parameter name omitted");
+		typerr ("no param name");
 		return;
 	}
 	p = lookup (name);
 	if (p == NULL || p->s_sc != SC_PARAM) {
-		typerr ("'%s' is not a parameter", (int) namebuf (name));
+		typerr ("%s not a param", (int) namebuf (name));
 		return;
 	}
 	p->s_tp = tp;
@@ -687,11 +687,11 @@ struct node *init;
 
 	if (curd.sc == SC_TYPEDEF) {
 		if (name == 0) {
-			typerr ("typedef name omitted");
+			typerr ("no typedef name");
 			return;
 		}
 		if (lookup (name) != NULL) {
-			typerr ("redeclaration of '%s'", (int) namebuf (name));
+			typerr ("redecl %s", (int) namebuf (name));
 			return;
 		}
 		sp = install (name, SC_TYPEDEF);
@@ -700,7 +700,7 @@ struct node *init;
 	}
 
 	if (name == 0) {
-		typerr ("name omitted in declarator");
+		typerr ("no declarator name");
 		return;
 	}
 	if (tp->t_op == T_FUNC) {
@@ -708,16 +708,16 @@ struct node *init;
 		old = scopefind (globals, name);
 		if (old != NULL && nscope == 0) {
 			if (old->s_tp->t_op != T_FUNC)
-				typerr ("redeclaration of '%s'", (int) namebuf (name));
+				typerr ("redecl %s", (int) namebuf (name));
 			else if (!compat (old->s_tp->t_tp, tp->t_tp))
-				typerr ("conflicting return type for '%s'",
+				typerr ("return clash %s",
 					(int) namebuf (name));
 			old->s_tp = tp;
 			chkinit (tp, init);
 			return;
 		}
 		if (old != NULL && nscope > 0) {
-			typerr ("redeclaration of '%s'", (int) namebuf (name));
+			typerr ("redecl %s", (int) namebuf (name));
 			return;
 		}
 		sc = curd.sc == 0 ? SC_EXTERN : curd.sc;
@@ -731,7 +731,7 @@ struct node *init;
 		if (old != NULL) {
 			if (nscope > 0 || !compat (old->s_tp, tp)
 			    || old->s_sc == SC_TYPEDEF)
-				typerr ("redeclaration of '%s'", (int) namebuf (name));
+				typerr ("redecl %s", (int) namebuf (name));
 			else
 				old->s_tp = tp;
 			chkinit (tp, init);
@@ -745,10 +745,10 @@ struct node *init;
 	sp->s_tp = tp;
 	if ((tp->t_op == T_STRUCT || tp->t_op == T_UNION)
 	    && tp->t_memb == NULL)
-		typerr ("'%s' has incomplete type", (int) namebuf (name));
+		typerr ("%s incomplete", (int) namebuf (name));
 	else if (tp->t_op == (BT_VOID | BT_CONST)
 		 || (tp->t_op & BT_MASK) == BT_VOID)
-		typerr ("'%s' has void type", (int) namebuf (name));
+		typerr ("%s is void", (int) namebuf (name));
 	chkinit (tp, init);
 	if (nscope == 0) {
 		emit_data (name, sc, tp, init);
@@ -798,7 +798,7 @@ struct node *init;
 			if (tp->t_size == 0)
 				tp->t_size = count;
 			if (tp->t_size != 0 && count > tp->t_size)
-				typerr ("too many initializers");
+				typerr ("too many inits");
 			chkitem (tp->t_tp, list);
 		} else if (tp->t_op == T_STRUCT || tp->t_op == T_UNION) {
 			n = 0;
@@ -806,7 +806,7 @@ struct node *init;
 				++n;
 			count = countitems (list);
 			if (count > n)
-				typerr ("too many initializers");
+				typerr ("too many inits");
 		}
 		/* scalars take `{ expr }` as in K&R C */
 		return;
@@ -819,11 +819,11 @@ struct node *init;
 				tp->t_size = strnlen (init->n_val) + 1;
 			return;
 		}
-		typerr ("array initializer requires braces");
+		typerr ("array init needs {}");
 		return;
 	}
 	if (!compat (tp, decay (init->n_tp)))
-		typerr ("incompatible initializer");
+		typerr ("bad init type");
 }
 
 /* check each element of a braced initializer against tp */
@@ -840,7 +840,7 @@ struct node *e;
 		return;
 	}
 	if (!compat (tp, decay (e->n_tp)))
-		typerr ("bad initializer element");
+		typerr ("bad init elem");
 }
 
 /* length of the string at offset off in the string file */

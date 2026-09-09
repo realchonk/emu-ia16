@@ -43,7 +43,7 @@ int bt;
 
 	if (bt & BT_VOID) {
 		if (base != BT_NONE || bt & (BT_UNSIGNED | BT_SIGNED)) {
-			typerr ("invalid type combination");
+			typerr ("bad type combo");
 			return BT_INT;
 		}
 		return bt;
@@ -56,7 +56,7 @@ int bt;
 	case BT_CHAR:
 		break;
 	default:
-		typerr ("invalid type combination");
+		typerr ("bad type combo");
 		return BT_INT;
 	}
 	return bt | BT_INT;
@@ -165,16 +165,10 @@ struct type *a, *b;
 		return 1;		/* an error was already reported */
 	if (a == b)
 		return 1;
-	if (isarith (a) && isarith (b))
-		return 1;
-	if (isptr (a) && isptr (b))
-		return 1;
+	if (isscalar (a) && isscalar (b))
+		return 1;		/* pointers mix freely with words */
 	if (a->t_op == b->t_op && a->t_op == T_ARY)
 		return 1;		/* extern T[] and T[n] get along */
-	if (isptr (a) && isarith (b))
-		return 1;
-	if (isarith (a) && isptr (b))
-		return 1;
 	if (a->t_op == b->t_op
 	    && (a->t_op == T_STRUCT || a->t_op == T_UNION))
 		return a->t_memb != NULL && a->t_memb == b->t_memb;

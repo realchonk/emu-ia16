@@ -263,7 +263,7 @@ lex ()
 				ch = get ();
 				for (;;) {
 					if (ch == EOF)
-						error ("unterminated comment");
+						error ("unterminated /*");
 					if (ch == '*') {
 						ch = get ();
 						if (ch == '/')
@@ -300,7 +300,7 @@ lex ()
 			ch = get ();
 		}
 		if (base == 8 && digval (ch, 10) >= 0)
-			error ("invalid digit in octal constant");
+			error ("bad octal digit");
 		unsf = longf = 0;
 		while (ch == 'u' || ch == 'U' || ch == 'l' || ch == 'L') {
 			if (ch == 'u' || ch == 'U')
@@ -381,7 +381,7 @@ lex ()
 		v = stroff;
 		while ((ch = get ()) != '"') {
 			if (ch == EOF)
-				error ("unterminated string constant");
+				error ("unterminated string");
 			if (ch != '\\')
 				goto put;
 			ch = escape (get ());
@@ -498,7 +498,7 @@ lex ()
 		yylval = ch;
 		return RELOP;
 	default:
-		error ("invalid character '%c' (0%o)", ch, ch);
+		error ("bad char '%c' 0%o", ch, ch);
 	}
 	/* NOTREACHED */
 }

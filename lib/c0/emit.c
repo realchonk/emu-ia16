@@ -431,7 +431,7 @@ struct node *e;
 		}
 		v = fold (e, &ok);
 		if (!ok) {
-			typerr ("initializer is not a constant");
+			typerr ("init not const");
 			izbytes (tysize (tp));
 			return;
 		}

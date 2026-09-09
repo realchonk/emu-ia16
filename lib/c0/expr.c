@@ -24,7 +24,7 @@ struct node *l, *r;
 	struct node *n;
 
 	if (nnpool >= NNODE)
-		error ("expression too complex");
+		error ("expr too complex");
 	n = &npool[nnpool++];
 	n->n_op = op;
 	n->n_tp = tp;
@@ -49,7 +49,7 @@ exproper (e)
 struct node *e;
 {
 	if (e != NULL && e->n_op == O_CAST && e->n_l == NULL) {
-		typerr ("expected an expression after the cast");
+		typerr ("cast needs an expr");
 		e->n_tp = btype (BT_INT);
 	}
 	return e;
@@ -129,18 +129,6 @@ int *ok;
 		return l << r;
 	case O_RS:
 		return l >> r;
-	case O_LE:
-		return l <= r;
-	case O_GE:
-		return l >= r;
-	case '<':
-		return l < r;
-	case '>':
-		return l > r;
-	case O_EQ:
-		return l == r;
-	case O_NE:
-		return l != r;
 	case '~':
 		return ~l;
 	case '!':
@@ -173,7 +161,7 @@ int name;
 			sp->s_tp = mktype (T_FUNC, btype (BT_INT), 0, NULL,
 					   NULL);
 		} else {
-			typerr ("'%s' undefined", (int) namebuf (name));
+			typerr ("%s undefined", (int) namebuf (name));
 			sp = install (name, nscope > 0 ? SC_AUTO : SC_EXTERN);
 			sp->s_tp = btype (BT_INT);
 		}
@@ -190,7 +178,7 @@ ncon ()
 	n = mknode (O_CON, btype (numbt), NULL, NULL);
 	if (numval < -32768 || numval > 32767) {
 		if (nlcon >= NLCON)
-			error ("too many long constants");
+			error ("out of lconsts");
 		lcons[nlcon] = numval;
 		n->n_op = O_LCON;
 		n->n_val = nlcon++;
@@ -283,7 +271,7 @@ struct node *l, *r;
 			return mknode (op, btype (BT_INT), l, r);
 		break;
 	}
-	typerr ("invalid operands to binary operator");
+	typerr ("bad binary operands");
 	return mknode (op, btype (BT_INT), l, r);
 }
 
@@ -294,7 +282,7 @@ struct node *l, *r;
 {
 	bscalars (l, r);
 	if (!isscalar (decay (l->n_tp)) || !isscalar (decay (r->n_tp)))
-		typerr ("invalid operands to %s",
+		typerr ("bad %s operands",
 			op == ANDAND ? "&&" : "||");
 	return mknode (op, btype (BT_INT), l, r);
 }
@@ -341,7 +329,7 @@ struct node *l, *r;
 		return mknode ('=', lt, l, r);
 	}
 	if (!compat (lt, rt)) {
-		typerr ("incompatible assignment");
+		typerr ("bad asgn");
 	} else if (op != '=') {
 		/* compound assignment: check the base operation */
 		baseop = op == O_ADDA ? '+'
@@ -354,9 +342,9 @@ struct node *l, *r;
 		      : op == O_XORA ? '^'
 		      : op == O_LSA ? O_LS : O_RS;
 		if (isptr (decay (lt)) && baseop != '+' && baseop != '-')
-			typerr ("invalid pointer assignment");
+			typerr ("bad ptr asgn");
 		else if (!isptr (decay (lt)) && !isarith (decay (lt)))
-			typerr ("invalid assignment operand");
+			typerr ("bad asgn operand");
 	}
 	/* keep the compound operator in n_op for the IR emitter */
 	return mknode (op, lt, l, r);
@@ -372,10 +360,10 @@ struct node *c, *t, *f;
 	exproper (t);
 	exproper (f);
 	if (!isscalar (decay (c->n_tp)))
-		typerr ("controlling expression must be scalar");
+		typerr ("cond must be scalar");
 	if (t != NULL && f != NULL && !compat (decay (t->n_tp),
 					       decay (f->n_tp)))
-		typerr ("incompatible branches of ?:");
+		typerr ("bad ?: types");
 	n = mknode (O_COND, t == NULL ? btype (BT_INT) : t->n_tp, c, t);
 	n->n_val = (long) (int) f;		/* third child, kept in n_val */
 	return n;
@@ -396,28 +384,28 @@ struct node *e;
 	switch (op) {
 	case '*':
 		if (t->t_op != T_PTR) {
-			typerr ("cannot dereference a non-pointer");
+			typerr ("deref of non-ptr");
 			return mknode (op, btype (BT_INT), e, NULL);
 		}
 		if ((t->t_tp->t_op == T_STRUCT || t->t_tp->t_op == T_UNION)
 		    && t->t_tp->t_memb == NULL)
-			typerr ("dereference of pointer to incomplete type");
+			typerr ("deref of incomplete");
 		return mknode (op, t->t_tp, e, NULL);
 	case '+':
 	case '-':
 		if (!isarith (t))
-			typerr ("invalid operand to unary %c", op);
+			typerr ("bad unary %c", op);
 		return mknode (op, e->n_tp, e, NULL);
 	case '!':
 		if (!isscalar (t))
-			typerr ("invalid operand to !");
+			typerr ("bad ! operand");
 		return mknode (op, btype (BT_INT), e, NULL);
 	case '~':
 		if (!isarith (t))
-			typerr ("invalid operand to ~");
+			typerr ("bad ~ operand");
 		return mknode (op, btype (BT_INT), e, NULL);
 	}
-	typerr ("invalid unary operator");
+	typerr ("bad unary op");
 	return mknode (op, btype (BT_INT), e, NULL);
 }
 
@@ -434,7 +422,7 @@ struct node *e;
 	if (e->n_op == O_NAME && t != NULL && t->t_op == T_FUNC)
 		return mknode (O_ADDR, ptrtype (t), e, NULL);
 	if (!islval (e)) {
-		typerr ("cannot take the address of this expression");
+		typerr ("not an lvalue for &");
 		return mknode (O_ADDR, btype (BT_INT), e, NULL);
 	}
 	if (t->t_op == T_ARY)		/* &array: pointer to element */
@@ -449,9 +437,9 @@ struct node *e;
 {
 	exproper (e);
 	if (!islval (e))
-		typerr ("operand of ++/-- must be an lvalue");
+		typerr ("++ needs an lvalue");
 	else if (!isscalar (decay (e->n_tp)))
-		typerr ("operand of ++/-- must be scalar");
+		typerr ("++ needs scalar");
 	if (pre)
 		return mknode (op == '+' ? O_PREINC : O_PREDEC, e->n_tp, e,
 			       NULL);
@@ -475,7 +463,7 @@ struct node *l, *r;
 		return mknode (O_INDEX, lt->t_tp, l, r);
 	if (isarith (lt) && isptr (rt))
 		return mknode (O_INDEX, rt->t_tp, l, r);
-	typerr ("invalid operands to []");
+	typerr ("bad [] operands");
 	return mknode (O_INDEX, btype (BT_INT), l, r);
 }
 
@@ -493,25 +481,25 @@ char *name;
 	if (op == O_ARROW) {
 		t = decay (t);
 		if (t == NULL || t->t_op != T_PTR) {
-			typerr ("left of -> is not a pointer");
+			typerr ("-> needs a ptr");
 			return mknode (op, btype (BT_INT), l, NULL);
 		}
 		t = t->t_tp;
 	}
 	if (t == NULL || (t->t_op != T_STRUCT && t->t_op != T_UNION)) {
-		typerr ("left of %s is not a struct or union",
+		typerr ("left of %s not a su",
 			op == O_ARROW ? "->" : ".");
 		return mknode (op, btype (BT_INT), l, NULL);
 	}
 	if (t->t_memb == NULL) {
-		typerr ("member access to incomplete type");
+		typerr ("incomplete member");
 		return mknode (op, btype (BT_INT), l, NULL);
 	}
 	for (m = t->t_memb; m != NULL; m = m->s_next)
 		if (strcmp (m->s_name, name) == 0)
 			break;
 	if (m == NULL) {
-		typerr ("no member named '%s'", name);
+		typerr ("no member %s", name);
 		return mknode (op, btype (BT_INT), l, NULL);
 	}
 	/* the member symbol rides in n_r, so the emitter can find its
@@ -547,7 +535,7 @@ struct node *f, *args;
 		 && ft->t_tp->t_op == T_FUNC)
 		ft = ft->t_tp;
 	else {
-		typerr ("called object is not a function");
+		typerr ("not a function");
 		return mknode (O_CALL, btype (BT_INT), f, args);
 	}
 	rt = ft->t_tp;
@@ -563,7 +551,7 @@ struct node *f, *args;
 			/* more arguments than parameters is legal:
 			   K&R varargs (_varargs.h) */
 			if (n < want)
-				typerr ("too few arguments (want %d, got %d)",
+				typerr ("too few args (%d, %d)",
 					want, n);
 		}
 	}
@@ -644,7 +632,7 @@ long v;
 	n = mknode (O_CON, btype (BT_INT), NULL, NULL);
 	if (v < -32768 || v > 32767) {
 		if (nlcon >= NLCON)
-			error ("too many long constants");
+			error ("out of lconsts");
 		lcons[nlcon] = v;
 		n->n_op = O_LCON;
 		n->n_val = nlcon++;
