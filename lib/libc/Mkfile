@@ -45,6 +45,8 @@ OBJS =	stdio/_printf.o		\
 	unistd/creat.o		\
 	unistd/lseek.o		\
 	unistd/open.o		\
+	unistd/pread.o		\
+	unistd/pwrite.o		\
 	unistd/read.o		\
 	unistd/unlink.o		\
 	unistd/write.o		\
