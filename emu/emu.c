@@ -225,6 +225,7 @@ enter16(int cs, int ds, int shimsel, uint32_t sp)
 
 	asm volatile (
 		"mov	%0, %%ds\n\t"
+		"mov	%0, %%es\n\t"
 		"mov	%0, %%ss\n\t"
 		"mov	%4, %%esp\n\t"
 		"ljmpw	*%1"
