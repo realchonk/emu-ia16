@@ -1,0 +1,9 @@
+NAME = cc
+OBJS = cc.o
+CFLAGS += -DPREFIX=\"$./_install\"
+ARGS = test.c -k
+
+clean-extra:
+	rm -f *.i *.ast *.str *.sym
+
+.expand prog

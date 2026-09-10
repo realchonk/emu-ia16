@@ -1,4 +1,5 @@
 .SUBDIRS:	cat	\
+		cc	\
 		echo	\
 		hello	\
 		yacc
