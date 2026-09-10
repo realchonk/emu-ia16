@@ -2,6 +2,8 @@
 
 NAME =	c
 
+HDRDIR = include
+
 OBJS =	stdio/_printf.o		\
 	stdio/dprintf.o		\
 	stdio/fclose.o		\
