@@ -14,4 +14,6 @@ char	*strrchr ();
 int	 strcmp ();
 size_t	 strlen ();
 
+char	*strerror ();
+
 #endif /* FILE_STRING_H */

@@ -25,5 +25,6 @@ extern int errno;
 #define ENOTDIR	20
 #define EISDIR	21
 #define EINVAL	22
+#define EMAXEN	22
 
 #endif /* FILE_ERRNO_H */
