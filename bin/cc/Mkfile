@@ -4,6 +4,6 @@ CFLAGS += -DPREFIX=\"$./_install\"
 ARGS = test.c -k
 
 clean-extra:
-	rm -f *.i *.ast *.str *.sym
+	rm -f *.i *.ast *.str *.sym *.ir
 
 .expand prog
