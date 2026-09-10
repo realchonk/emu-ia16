@@ -7,6 +7,9 @@
 #define SEEK_CUR 1
 #define SEEK_END
 
+extern char	*optarg;
+extern int	 optind, optopt, opterr;
+
 __dead
 void	 _exit ();
 
@@ -20,5 +23,6 @@ int	 pwrite ();
 
 int	 brk ();
 void	*sbrk ();
+int	 getopt ();
 
 #endif /* FILE_UNISTD_H */
