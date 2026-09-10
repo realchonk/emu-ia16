@@ -43,6 +43,7 @@ OBJS =	stdio/_printf.o		\
 	string/strcpy.o		\
 	string/strerror.o	\
 	string/strlen.o		\
+	string/strnlen.o	\
 	string/strrchr.o	\
 	unistd/_exit.o		\
 	unistd/brk.o		\

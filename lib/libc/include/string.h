@@ -13,6 +13,7 @@ char	*strchr ();
 char	*strrchr ();
 int	 strcmp ();
 size_t	 strlen ();
+size_t	 strnlen ();
 
 char	*strerror ();
 
