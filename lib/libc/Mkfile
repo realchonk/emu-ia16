@@ -29,6 +29,7 @@ OBJS =	stdio/_printf.o		\
 	stdlib/ctype.o		\
 	stdlib/errno.o		\
 	stdlib/exit.o		\
+	stdlib/getprogname.o	\
 	stdlib/malloc.o		\
 	string/memcmp.o		\
 	string/memcpy.o		\

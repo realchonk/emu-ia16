@@ -1,7 +1,9 @@
 bits 16
 section .bss
-global _sys
+global _sys, __progname
 _sys:
+	resw 2
+__progname:
 	resw 2
 
 section .text
@@ -13,9 +15,18 @@ _start:
 	mov word [_sys + 2], ax
 
 	mov bx, sp
-	lea si, [bx + 2]	; argv
+
+	; argv
+	lea si, [bx + 2]
 	push si
-	push word [bx]		; argc
+
+	; store argv[0] in __progname
+	mov ax, word [si]
+	mov word [__progname], ax
+
+	; argc
+	push word [bx]
+
 	call main
 	add sp, 4
 	push ax

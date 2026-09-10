@@ -13,4 +13,6 @@ void	 free ();
 
 int	 atoi ();
 
+const char *getprogname ();
+
 #endif /* FILE_STDLIB_H */
