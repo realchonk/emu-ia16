@@ -789,7 +789,7 @@ struct node *init;
 			if (list != NULL && list->n_op == O_STR
 			    && ischar (tp->t_tp)) {
 				if (tp->t_size == 0)
-					tp->t_size = strnlen (list->n_val) + 1;
+					tp->t_size = xstrnlen (list->n_val) + 1;
 				return;
 			}
 			count = countitems (list);
@@ -814,7 +814,7 @@ struct node *init;
 		if (init->n_op == O_STR
 		    && ischar (tp->t_tp)) {
 			if (tp->t_size == 0)
-				tp->t_size = strnlen (init->n_val) + 1;
+				tp->t_size = xstrnlen (init->n_val) + 1;
 			return;
 		}
 		typerr ("array init needs {}");
@@ -843,7 +843,7 @@ struct node *e;
 
 /* length of the string at offset off in the string file */
 int
-strnlen (off)
+xstrnlen (off)
 int off;
 {
 	char buf[32];

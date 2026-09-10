@@ -385,7 +385,7 @@ struct node *e;
 			char buf[32];
 			int j, n;
 
-			sz = strnlen (e->n_val);
+			sz = xstrnlen (e->n_val);
 			wbyte (0x01);
 			wword (sz + 1);
 			for (i = 0; ; i += n) {

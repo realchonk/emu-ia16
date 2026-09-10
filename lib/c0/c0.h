@@ -286,7 +286,7 @@ struct dcl	*dstar (), *dptrn (), *dchain (), *dname (), *dfunc (),
 		 *dary ();
 struct dspec	*tn_bt (), *tn_td (), *tn_su (), *tn_cat ();
 int		 dclname ();
-int		 curd_sc (), strnlen ();
+int		 curd_sc (), xstrnlen ();
 void		 dcl_reset (), freesymb (), sc_sclass (), sc_type (),
 		 sc_const (), sc_su (), sc_td (), member (), bindparam (),
 		 dclinst (), chkinit (), blkpush (), blkpop ();
