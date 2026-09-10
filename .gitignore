@@ -5,9 +5,9 @@
 /bin/yacc/yacc
 /bin/yacc/yacc.*
 /bin/yacc/y.tab.c
-*.o
-*.elf
-*.a
-*.ir
-*.str
-*.sym
+**/*.o
+**/*.elf
+**/*.a
+**/*.ir
+**/*.str
+**/*.sym
