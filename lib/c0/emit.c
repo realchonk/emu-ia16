@@ -31,15 +31,15 @@ static void
 wbyte (v)
 int v;
 {
-	oputc (v & 0xff, firfd);
+	oputc (v & 0xff, astfd);
 }
 
 static void
 wword (v)
 int v;
 {
-	oputc (v & 0xff, firfd);
-	oputc ((v >> 8) & 0xff, firfd);
+	oputc (v & 0xff, astfd);
+	oputc ((v >> 8) & 0xff, astfd);
 }
 
 static void
@@ -49,7 +49,7 @@ long v;
 	int i;
 
 	for (i = 0; i < 4; ++i) {
-		oputc ((int) (v & 0xff), firfd);
+		oputc ((int) (v & 0xff), astfd);
 		v >>= 8;
 	}
 }

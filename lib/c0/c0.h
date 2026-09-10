@@ -10,7 +10,7 @@
  * in it NUL-separated, and a name is its byte offset (an int), so
  * name equality is offset equality.  Bytes are read back with
  * pread() where they are needed. */
-extern int	firfd, symfd, strfd;
+extern int	astfd, symfd, strfd;
 
 #define MAXIDENT	31
 

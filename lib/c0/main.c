@@ -16,7 +16,7 @@
  * 64K program.
  */
 
-int	firfd, symfd, strfd;
+int	astfd, symfd, strfd;
 int	nerrors;
 
 /* ---------------- raw byte input and output ---------------- */
@@ -161,26 +161,26 @@ int	  argc;
 char	**argv;
 {
 	if (argc != 4) {
-		mini (2, "usage: c0 ir str sym\n", 0, 0);
+		mini (2, "usage: c0 ast str sym\n", 0, 0);
 		return 1;
 	}
-	firfd = open (argv[1], O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	astfd = open (argv[1], O_WRONLY | O_CREAT | O_TRUNC, 0644);
 	strfd = open (argv[2], O_RDWR | O_CREAT | O_TRUNC, 0644);
 	symfd = open (argv[3], O_WRONLY | O_CREAT | O_TRUNC, 0644);
-	if (firfd < 0 || strfd < 0 || symfd < 0) {
+	if (astfd < 0 || strfd < 0 || symfd < 0) {
 		mini (2, "cannot open %s\n",
-		      (int) (firfd < 0 ? argv[1]
+		      (int) (astfd < 0 ? argv[1]
 			    : strfd < 0 ? argv[2] : argv[3]), 0);
 		return 1;
 	}
 
 	oputc (0, strfd);		/* offset 0: the reserved pad byte */
-	oputs ("CIR", firfd);
-	oputc (0, firfd);
+	oputs ("CIR", astfd);
+	oputc (0, astfd);
 
 	yyparse ();
 
-	close (firfd);
+	close (astfd);
 	close (strfd);
 	close (symfd);
 	if (nerrors != 0) {
