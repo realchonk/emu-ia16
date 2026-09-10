@@ -52,6 +52,8 @@ OBJS =	stdio/_printf.o		\
 	unistd/brk.o		\
 	unistd/close.o		\
 	unistd/creat.o		\
+	unistd/execv.o		\
+	unistd/fork.o		\
 	unistd/getopt.o		\
 	unistd/lseek.o		\
 	unistd/open.o		\
@@ -59,6 +61,7 @@ OBJS =	stdio/_printf.o		\
 	unistd/pwrite.o		\
 	unistd/read.o		\
 	unistd/unlink.o		\
+	unistd/wait.o		\
 	unistd/write.o		\
 
 .expand lib

@@ -25,4 +25,7 @@ int	 brk ();
 void	*sbrk ();
 int	 getopt ();
 
+int	 fork ();
+int	 execv ();
+
 #endif /* FILE_UNISTD_H */

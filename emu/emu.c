@@ -12,6 +12,7 @@
 #define	_GNU_SOURCE	/* MAP_32BIT */
 #include <sys/types.h>
 #include <sys/mman.h>
+#include <sys/wait.h>
 #include <sys/syscall.h>
 #include <asm/ldt.h>
 #include <errno.h>
@@ -31,10 +32,12 @@
 #include <stdnoreturn.h>
 #include <string.h>
 #include <unistd.h>
+#include <err.h>
 
 /* labels defined in shim.S */
 extern const char shim32[];
 extern const char host_cs, host_ds, shim32_len;
+static char *emu;
 
 /* stack pointer for syscalls from 16 bit mode */
 struct {
@@ -245,6 +248,7 @@ int main(int argc, char *argv[])
 		fputs ("usage: emu prog [args...]\n", stderr);
 		return 1;
 	}
+	emu = argv[0];
 	prog = argv[1];
 
 	aoutfd = open(prog, O_RDONLY|O_CLOEXEC);
@@ -309,11 +313,45 @@ xoflags (int oflags)
 	return nflags;
 }
 
+static int
+doexecv (char *prog, uint16_t *argv)
+{
+	char	**hargv;
+	size_t	  i, argc;
+	int	  ret;
+
+	for (argc = 0; argv[argc] != 0; ++argc);
+
+	hargv = calloc (argc + 2, sizeof (char *));
+	hargv[0] = emu;
+	for (i = 0; i < argc; ++i) {
+		hargv[i + 1] = text + argv[i];
+	}
+	hargv[argc + 1] = NULL;
+	
+	ret = execv (emu, hargv);
+	warn ("execv");
+	free (hargv);
+	return ret;
+}
+
+static int
+mapws (int ws)
+{
+	if (WIFEXITED (ws)) {
+		return WEXITSTATUS (ws) << 8;
+	} else {
+		/* TODO */
+		return -1;
+	}
+}
+
 int
 sysentry(int ss, uint32_t esp, int no)
 {
 	char		*linsp;
 	uint16_t	*args;
+	int		 r, ws;
 
 	linsp = text + (esp & 0xffff);
 	args = (uint16_t *)(linsp + 6);
@@ -337,6 +375,15 @@ sysentry(int ss, uint32_t esp, int no)
 		return open (text + args[0], xoflags (args[1]), args[2]);
 	case 8:
 		return creat (text + args[0], args[1]);
+	case 9:
+		return fork ();
+	case 10:
+		return doexecv (text + args[0], (uint16_t *)(text + args[1]));
+	case 11:
+		r = wait (&ws);
+		if (args[0] != 0)
+			*((uint16_t *)(text + args[0])) = mapws (ws);
+		return r;
 
 	default:
 		dprintf(STDERR_FILENO, "syscall%d(%d, %d, %d, %d)\n", no, args[0], args[1], args[2], args[3]);
