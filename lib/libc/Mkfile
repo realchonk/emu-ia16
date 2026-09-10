@@ -27,7 +27,9 @@ OBJS =	stdio/_printf.o		\
 	stdlib/atoi.o		\
 	stdlib/calloc.o		\
 	stdlib/ctype.o		\
+	stdlib/err.o		\
 	stdlib/errno.o		\
+	stdlib/errx.o		\
 	stdlib/exit.o		\
 	stdlib/getprogname.o	\
 	stdlib/malloc.o		\
