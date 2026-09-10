@@ -1,7 +1,7 @@
 .SUBDIRS: libc cpp c0
 
-PREFIX ?= /
-.EXPORTS: PREFIX
+BINDIR = ${PREFIX}/lib
+.EXPORTS: BINDIR
 
 OBJS = crt0.o
 

@@ -38,10 +38,14 @@ LIB := lib${NAME}.a
 ## Build ${LIB}
 all: ${LIB}
 
-## Install ${LIB} into ${PREFIX}/lib
+## Install ${LIB} into ${LIBDIR} and headers into ${INCDIR}
 install: ${LIB}
-	mkdir -p ${DESTDIR}${PREFIX}/lib
-	cp -f ${LIB:F} ${DESTDIR}${PREFIX}/lib/
+	mkdir -p ${DESTDIR}${LIBDIR}
+	cp -f ${LIB:F} ${DESTDIR}${PREFIX}/
+.if defined(HDRDIR)
+	mkdir -p ${DESTDIR}${INCDIR}
+	cp -rf ${HDRDIR}/* ${DESTDIR}${INCDIR}/
+.endif
 
 ## Remove build artifacts
 clean:
@@ -73,10 +77,10 @@ ARGS ?=
 ## Build ${NAME} program
 all: ${BIN}
 
-## Install ${NAME} into ${PREFIX}/bin
+## Install ${NAME} into ${BINDIR}
 install: ${BIN}
-	mkdir -p ${DESTDIR}${PREFIX}/bin
-	cp -f ${BIN:F} ${DESTDIR}${PREFIX}/bin/
+	mkdir -p ${DESTDIR}${BINDIR}
+	cp -f ${BIN:F} ${DESTDIR}${BINDIR}/
 
 ## Remove build artifacts
 clean:

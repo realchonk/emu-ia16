@@ -7,6 +7,12 @@ DESTDIR ?= ${.OBJDIR}/$./_install
 LIBDEPS = $./lib/crt0.o $./lib/user.x $./lib/libc/libc.a
 .EXPORTS: EMU DESTDIR LIBDEPS
 
+PREFIX ?= /
+BINDIR ?= ${PREFIX}/bin
+LIBDIR ?= ${PREFIX}/lib
+INCDIR ?= ${PREFIX}/include
+.EXPORTS: PREFIX BINDIR LIBDIR INCDIR
+
 .asm.o:
 	${AS} -felf32 -o $@ $<
 

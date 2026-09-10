@@ -3,7 +3,4 @@
 		hello	\
 		yacc
 
-PREFIX ?= /
-.EXPORTS: PREFIX
-
 .expand dir
