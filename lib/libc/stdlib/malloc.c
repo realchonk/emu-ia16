@@ -1,7 +1,6 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <errno.h>
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
@@ -38,7 +37,7 @@ size_t num;
 	void		*ptr;
 	size_t		 anum;
 
-	anum = MAX (num + sizeof (size_t), sizeof (struct map) + 2);
+	anum = MAX (num + sizeof (size_t), sizeof (struct map));
 
 	/* try finding an already free block */
 	m = find_free (anum, &l);
@@ -70,7 +69,7 @@ size_t num;
 	 * list.  Otherwise hand out all of m and drop it from the list.
 	 * n is what m's predecessor has to point to afterwards.
 	 */
-	if (m->len >= anum + sizeof (struct map) + 2) {
+	if (m->len >= anum + sizeof (struct map)) {
 		n = (struct map *)((char *)m + anum);
 		n->len = m->len - anum;
 		n->prev = m->prev;
