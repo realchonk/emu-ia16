@@ -7,6 +7,7 @@ void	*memset ();
 void	*memcpy ();
 void	*memmove ();
 
+char	*strdup ();
 char	*strcpy ();
 char	*strcat ();
 char	*strchr ();

@@ -41,6 +41,7 @@ OBJS =	stdio/_printf.o		\
 	string/strchr.o		\
 	string/strcmp.o		\
 	string/strcpy.o		\
+	string/strdup.o		\
 	string/strerror.o	\
 	string/strlen.o		\
 	string/strnlen.o	\
