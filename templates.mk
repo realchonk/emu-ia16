@@ -88,7 +88,7 @@ clean:
 
 .if !target(run)
 ## Run ${NAME} with $${ARGS}
-run: ${BIN} ${EMU}
+run: ${BIN} ${EMU} ${RDEPS}
 	${EMU:F} ${BIN:F} ${ARGS}
 .endif
 

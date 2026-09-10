@@ -1,7 +1,14 @@
 NAME = cc
 OBJS = cc.o
+
 CFLAGS += -DPREFIX=\"$./_install\"
-ARGS = test.c -k
+CFLAGS += -DINCDIR=\"$./lib/libc/include\"
+CFLAGS += -DCPP=\"$./lib/cpp/cpp\"
+CFLAGS += -DC0=\"$./lib/c0/c0\"
+CFLAGS += -DC1=\"$./lib/c1/c1\"
+
+ARGS = cc.c -k
+RDEPS = $./lib/cpp $./lib/c0 $./lib/c1
 
 clean-extra:
 	rm -f *.i *.ast *.str *.sym *.ir

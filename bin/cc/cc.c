@@ -11,11 +11,25 @@
 # define PREFIX		""
 #endif
 
-#define LIBDIR PREFIX	"/lib"
-#define INCDIR PREFIX	"/include"
-#define CPP		LIBDIR "/cpp"
-#define C0		LIBDIR "/c0"
-#define C1		LIBDIR "/c1"
+#ifndef LIBDIR
+# define LIBDIR PREFIX	"/lib"
+#endif
+
+#ifndef INCDIR
+# define INCDIR PREFIX	"/include"
+#endif
+
+#ifndef CPP
+# define CPP		LIBDIR "/cpp"
+#endif
+
+#ifndef C0
+# define C0		LIBDIR "/c0"
+#endif
+
+#ifndef C1
+# define C1		LIBDIR "/c1"
+#endif
 
 static bool keeptemps = false;
 
