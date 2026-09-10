@@ -11,4 +11,6 @@ void	*calloc ();
 void	*realloc ();
 void	 free ();
 
+int	 atoi ();
+
 #endif /* FILE_STDLIB_H */
