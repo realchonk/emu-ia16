@@ -24,7 +24,7 @@ extern int	astfd, symfd, strfd;
 #define	NINT	448			/* interned names (string file offsets) */
 
 /* type.c */
-#define	NTYPE	256			/* type pool entries */
+#define	NTYPE	272			/* type pool entries */
 
 /* decl.c */
 #define	NSYMB	640			/* symbol pool entries */
@@ -318,6 +318,7 @@ extern int	 nlocidx, nargsloc;
 void	 emit_data (), emit_fdecl (), emit_static ();
 void	 emit_fhead (), emit_ftail ();
 void	 emexpr ();		 /* write the bytes of an expression */
+void	 emstmt ();		 /* "E" expr: an expression statement */
 void	 emlab (), emjump (), embr (), emret (), emswch ();
 void		 emusym ();
 char	*numstr ();		 /* append a decimal number to a string */

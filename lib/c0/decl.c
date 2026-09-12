@@ -755,7 +755,7 @@ struct node *init;
 		emit_static (sp, tp, init);
 	} else if (init != NULL && init->n_op != O_ILIST) {
 		/* an initialized auto becomes an assignment in the code */
-		emexpr (nasgn ('=', nlocal (sp), init));
+		emstmt (nasgn ('=', nlocal (sp), init));
 		expr_reset ();
 	}
 }

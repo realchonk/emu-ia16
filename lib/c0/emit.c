@@ -12,8 +12,14 @@
  */
 
 
-static int	 symnames[NSYMNM];	/* string file offsets */
+/*
+ * Symbol file offsets: dedup keyed on the name's string file offset,
+ * value = the offset of the name in the symbol file.
+ */
+static int	 symkeys[NSYMNM];	/* string file offsets */
+static int	 symoffs[NSYMNM];	/* symbol file offsets */
 static int	 nsymnames;
+static int	 symoff;			/* end of the symbol file */
 
 /* static locals: symbol -> mangled name */
 static struct symb *sttab[NSTATIC];
@@ -107,26 +113,30 @@ emitsym (name)
 int name;
 {
 	char buf[48];
-	int i, n, t;
+	int i, n, t, off;
 
 	for (i = 0; i < nsymnames; ++i)
-		if (symnames[i] == name)
-			return i;
+		if (symkeys[i] == name)
+			return symoffs[i];
 	if (nsymnames >= NSYMNM)
 		error ("too many symbols");
-	symnames[nsymnames] = name;
+	symkeys[nsymnames] = name;
+	off = symoff;
+	symoffs[nsymnames++] = off;
 	for (t = 0; ; t += n) {
 		n = pread (strfd, buf, sizeof buf, (long) (name + t));
 		if (n <= 0)
 			break;
 		for (i = 0; i < n; ++i) {
 			oputc (buf[i], symfd);
+			++symoff;
 			if (buf[i] == '\0')
-				return nsymnames++;
+				return off;
 		}
 	}
 	oputc (0, symfd);
-	return nsymnames++;
+	++symoff;
+	return off;
 }
 
 static void
@@ -848,6 +858,15 @@ wlab (lab)
 int lab;
 {
 	wword (0x8000 | lab);
+}
+
+/* an expression statement: the "E" tag, then the expression */
+void
+emstmt (e)
+struct node *e;
+{
+	wbyte ('E');
+	emexpr (e, NULL);
 }
 
 /* label, jump, branch, return, switch chain: the statement forms */

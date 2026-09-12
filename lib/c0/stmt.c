@@ -191,7 +191,7 @@ void
 stmtx (e)
 struct node *e;
 {
-	emexpr (exproper (e));
+	emstmt (exproper (e));
 	expr_reset ();
 }
 
@@ -338,7 +338,7 @@ struct node *e1, *e2, *e3;
 	int lc, lb, ls;
 
 	if (e1 != NULL) {
-		emexpr (e1);
+		emstmt (e1);
 		expr_reset ();
 	}
 	lc = newlab ();
@@ -366,7 +366,7 @@ sforend ()
 	--nloopst;
 	emlab (loopst[nloopst].lab1);		/* .Ls */
 	if (loopst[nloopst].step != NULL)
-		emexpr (loopst[nloopst].step);
+		emstmt (loopst[nloopst].step);
 	emjump (loopst[nloopst].lab2);		/* .Lc */
 	emlab (brklab[--nbrk]);
 	--ncont;
@@ -399,7 +399,7 @@ struct node *cond;
 	sp->s_tp = tp;
 	t = nlocal (sp);
 
-	emexpr (nasgn ('=', t, cond));
+	emstmt (nasgn ('=', t, cond));
 	expr_reset ();
 	if (nsw >= NSW)
 		error ("switches nested too deeply");
