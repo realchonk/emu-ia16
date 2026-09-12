@@ -1,6 +1,6 @@
 # *.symbol
 All symbol names used by the IR, separated by NUL bytes.  A `sym` is
-the 0-based index of a name in this file, in order of first use.
+the byte offset of a name in this file.
 Mangled names: user labels are "func.label", static locals are
 "func.name", generated labels are ".Ln", switch temporaries are ".swN".
 
@@ -18,11 +18,11 @@ word:
 dword:
 	32bit integer, little endian
 sym: word
-	index into the symbol file; if the high bit is set, the low
-	15 bits are a generated label number (".LN") and the name is
-	not in the symbol file
+	offset of a name in the symbol file; if the high bit is set,
+	the low 15 bits are a generated label number (".LN") and the
+	name is not in the symbol file
 six: word
-	index into the string file
+	offset into the string file
 ty: byte
 	The type of an expression, so that c1 knows the width and
 	signedness of every operand:
@@ -87,7 +87,7 @@ Label:			"L" sym
 Jump:			"J" sym
 Branch:			"B" true false cond
 	Jump to true (sym) or false (sym), based on cond (expr)
-Expr:			expr
+Expr:			"E" expr
 
 ## Expressions (expr):
 Integer:		"i" ty word
