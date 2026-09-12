@@ -119,21 +119,22 @@ char *input, *astfile, *strfile, *symfile;
 }
 
 static int
-runc1 (astfile, symfile, irfile)
-char *astfile, *symfile, *irfile;
+runc1 (astfile, irfile)
+char *astfile, *irfile;
 {
-	char	*argv[4];
+	char	*argv[2];
 	int	 ws;
 
 	argv[0] = C1;
-	argv[1] = astfile;
-	argv[2] = symfile;
-	argv[3] = NULL;
+	argv[1] = NULL;
 
 	switch (fork ()) {
 	case -1:
 		err (1, "10: fork()");
 	case 0:
+		close (0);
+		if (open (astfile, O_RDONLY) != 0)
+			err (1, "c1: open('%s')", astfile);
 		close (1);
 		if (open (irfile, O_WRONLY | O_CREAT | O_TRUNC, 0644) != 1)
 			err (1, "c1: open('%s')", irfile);
@@ -172,7 +173,7 @@ char **arg;
 	if (runc0 (i, ast, str, sym) != 0)
 		goto fail;
 
-	if (runc1 (ast, sym, ir) != 0)
+	if (runc1 (ast, ir) != 0)
 		goto fail;
 
 	ret = 0;
