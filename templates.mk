@@ -35,9 +35,12 @@ clean: ${.SUBDIRS:=/clean}
 
 LIB := lib${NAME}.a
 
+.if !target(all)
 ## Build ${LIB}
 all: ${LIB}
+.endif
 
+.if !target(install)
 ## Install ${LIB} into ${LIBDIR} and headers into ${INCDIR}
 install: ${LIB}
 	mkdir -p ${DESTDIR}${LIBDIR}
@@ -46,18 +49,25 @@ install: ${LIB}
 	mkdir -p ${DESTDIR}${INCDIR}
 	cp -rf ${HDRDIR}/* ${DESTDIR}${INCDIR}/
 .endif
+.endif
 
+.if !target(clean)
 ## Remove build artifacts
 clean:
 	rm -f ${LIB:F} *.o ${.SUBDIRS:=/*.o}
+.endif
 
+.if !target(dump)
 ## Disassemble ${LIB}
 dump: ${LIB}
 	${OD} -ds -m i8086 -Mintel $< | bat -l asm
+.endif
 
+.if !target(size)
 ## Compute the size for ${LIB}
 size: ${LIB}
 	${SIZE} -t $<
+.endif
 
 ${LIB}: ${OBJS}
 	${AR} rcs $@ ${OBJS:F}
@@ -74,17 +84,23 @@ BIN := ${NAME}
 ## Program Arguments for `run`
 ARGS ?=
 
+.if !target(all)
 ## Build ${NAME} program
 all: ${BIN}
+.endif
 
+.if !target(install)
 ## Install ${NAME} into ${BINDIR}
 install: ${BIN}
 	mkdir -p ${DESTDIR}${BINDIR}
 	cp -f ${BIN:F} ${DESTDIR}${BINDIR}/
+.endif
 
+.if !target(clean)
 ## Remove build artifacts
 clean:
 	rm -f ${BIN} *.o *.elf
+.endif
 
 .if !target(run)
 ## Run ${NAME} with $${ARGS}
@@ -92,13 +108,17 @@ run: ${BIN} ${EMU} ${RDEPS}
 	${EMU:F} ${BIN:F} ${ARGS}
 .endif
 
+.if !target(dump)
 ## Disassemble ${NAME}
 dump: ${NAME}.elf
 	${OD} -ds -m i8086 -Mintel $< | bat -l asm
+.endif
 
+.if !target(size)
 ## Compute the size for ${NAME}
 size: ${NAME}.elf
 	${SIZE} $<
+.endif
 
 .if !target(${NAME}.elf)
 ${NAME}.elf: ${OBJS} ${LIBDEPS}
