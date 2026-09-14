@@ -8,8 +8,11 @@ void	*memcpy ();
 void	*memmove ();
 
 char	*strdup ();
+char	*strndup ();
 char	*strcpy ();
+char	*strncpy ();
 char	*strcat ();
+char	*strncat ();
 char	*strchr ();
 char	*strrchr ();
 int	 strcmp ();

@@ -46,6 +46,9 @@ OBJS =	stdio/_printf.o		\
 	string/strdup.o		\
 	string/strerror.o	\
 	string/strlen.o		\
+	string/strncat.o	\
+	string/strncpy.o	\
+	string/strndup.o	\
 	string/strnlen.o	\
 	string/strrchr.o	\
 	unistd/_exit.o		\
