@@ -26,6 +26,7 @@ OBJS =	stdio/_printf.o		\
 	stdio/stdio.o		\
 	stdio/ungetc.o		\
 	stdio/vfprintf.o	\
+	stdlib/abort.o		\
 	stdlib/atoi.o		\
 	stdlib/calloc.o		\
 	stdlib/ctype.o		\

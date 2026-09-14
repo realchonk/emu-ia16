@@ -5,6 +5,8 @@
 
 __dead
 void	 exit ();
+__dead
+void	 abort ();
 
 void	*malloc ();
 void	*calloc ();
