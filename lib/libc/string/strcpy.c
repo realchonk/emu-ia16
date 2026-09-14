@@ -6,7 +6,8 @@ char		*d;
 const char	*s;
 {
 	char *o = d;
-	while (*s != '\0')
-		*d++ = *s++;
+	do {
+		*d++ = *s;
+	} while (*s++ != '\0');
 	return o;
 }
