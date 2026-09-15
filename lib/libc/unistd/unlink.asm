@@ -3,8 +3,8 @@
 
 section .text
 global unlink
-extern _sys
+extern _sys, _set_errno
 unlink:
 	mov ax, 6
 	call far word [_sys]
-	ret
+	jmp _set_errno

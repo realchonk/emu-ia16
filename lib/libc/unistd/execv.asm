@@ -3,8 +3,8 @@
 
 section .text
 global execv
-extern _sys
+extern _sys, _set_errno
 execv:
 	mov ax, 10
 	call far word [_sys]
-	ret
+	jmp _set_errno

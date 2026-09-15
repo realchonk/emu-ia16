@@ -3,8 +3,8 @@
 
 section .text
 global open
-extern _sys
+extern _sys, _set_errno
 open:
 	mov ax, 7
 	call far word [_sys]
-	ret
+	jmp _set_errno

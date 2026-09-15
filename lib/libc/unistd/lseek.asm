@@ -3,8 +3,8 @@
 
 section .text
 global lseek
-extern _sys
+extern _sys, _set_errnol
 lseek:
 	mov ax, 5
 	call far word [_sys]
-	ret
+	jmp _set_errnol

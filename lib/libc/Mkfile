@@ -64,6 +64,8 @@ OBJS =	stdio/_printf.o		\
 	unistd/pread.o		\
 	unistd/pwrite.o		\
 	unistd/read.o		\
+	unistd/set_errno.o	\
+	unistd/set_errnol.o	\
 	unistd/unlink.o		\
 	unistd/wait.o		\
 	unistd/write.o		\

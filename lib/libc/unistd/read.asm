@@ -3,8 +3,8 @@
 
 section .text
 global read
-extern _sys
+extern _sys, _set_errno
 read:
 	mov ax, 3
 	call far word [_sys]
-	ret
+	jmp _set_errno
