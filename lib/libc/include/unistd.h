@@ -3,9 +3,13 @@
 #include <stddef.h>
 #include <cdefs.h>
 
-#define SEEK_SET 0
-#define SEEK_CUR 1
-#define SEEK_END
+#define STDIN_FILENO	0
+#define STDOUT_FILENO	1
+#define STDERR_FILENO	2
+
+#define SEEK_SET	0
+#define SEEK_CUR	1
+#define SEEK_END	2
 
 extern char	*optarg;
 extern int	 optind, optopt, opterr;

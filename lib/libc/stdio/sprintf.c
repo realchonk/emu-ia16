@@ -1,18 +1,5 @@
 #include <_varargs.h>
-#include <unistd.h>
 #include <stdio.h>
-
-extern int _vprintf ();
-
-static void
-sputc (p, c)
-void	*p;
-int	 c;
-{
-	char **s = p;
-	**s = c;
-	++*s;
-}
 
 int
 sprintf (s, fmt)
@@ -23,7 +10,7 @@ const char	*fmt;
 	int	n;
 
 	va_start (ap, fmt);
-	n = _vprintf (sputc, &s, fmt, ap);
+	n = vsnprintf (s, -1, fmt, ap);
 	va_end (ap);
 	return n;
 }
