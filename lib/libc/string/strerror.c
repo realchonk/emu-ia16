@@ -25,6 +25,20 @@ static char *msg[] = {
 	/* ENOTDIR	*/ "Not a directory",
 	/* EISDIR	*/ "Is a directory",
 	/* EINVAL	*/ "Invalid argument",
+	/* ENFILE	*/ "Too many open files in system",
+	/* EMFILE	*/ "Too many open files",
+	/* ENOTTY	*/ "Inappropriate ioctl for device",
+	/* ETXTBSY	*/ "Text file busy",
+	/* EFBIG	*/ "File too large",
+	/* ENOSPC	*/ "No space left on device",
+	/* ESPIPE	*/ "Illegal seek",
+	/* EROFS	*/ "Read-only file system",
+	/* EMLINK	*/ "Too many links",
+	/* EPIPE	*/ "Broken pipe",
+	/* EDOM		*/ "Domain error",
+	/* ERANGE	*/ "Range error",
+	/* ENAMETOOLONG	*/ "File name too long",
+	/* ENOSYS	*/ "Function not implemented",
 };
 
 char *
