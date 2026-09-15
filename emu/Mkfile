@@ -10,4 +10,4 @@ clean:
 	rm -f ${BIN:F} *.core
 
 emu: emu.c shim.S
-	${HOSTCC} -o $@ emu.c shim.S -no-pie ${HOSTCFLAGS} ${HOSTLDFLAGS}
+	${HOSTCC} -o $@ emu.c sys.c shim.S -no-pie ${HOSTCFLAGS} ${HOSTLDFLAGS}

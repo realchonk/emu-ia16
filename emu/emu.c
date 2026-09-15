@@ -12,11 +12,9 @@
 #define	_GNU_SOURCE	/* MAP_32BIT */
 #include <sys/types.h>
 #include <sys/mman.h>
-#include <sys/wait.h>
 #include <sys/syscall.h>
 #include <asm/ldt.h>
 #include <errno.h>
-#define	_write	write
 #elif defined(__FreeBSD__)
 #include <sys/types.h>
 #include <sys/mman.h>
@@ -37,14 +35,13 @@
 /* labels defined in shim.S */
 extern const char shim32[];
 extern const char host_cs, host_ds, shim32_len;
-static char *emu;
 
 /* stack pointer for syscalls from 16 bit mode */
 struct {
 	uint32_t esp;
 	uint16_t ss;
 } stack64;
-char *text;
+char *text, *emu;
 
 #define STACKSIZ 8192
 uintptr_t stack[STACKSIZ];
@@ -208,10 +205,8 @@ setup_args(char **argv)
 	sp -= 2;
 	*(uint16_t *)(text + sp) = argc;
 
-	if (sp < 0x8000) {
-		fprintf(stderr, "arguments too long\n");
-		exit(EXIT_FAILURE);
-	}
+	if (sp < 0x8000)
+		errx (1, "arguments too long");
 
 	return (sp);
 }
@@ -252,141 +247,24 @@ int main(int argc, char *argv[])
 	prog = argv[1];
 
 	aoutfd = open(prog, O_RDONLY|O_CLOEXEC);
-	if (aoutfd == -1) {
-		perror(prog);
-		return (EXIT_FAILURE);
-	}
+	if (aoutfd == -1)
+		err (1, "open('%s')", prog);
 
 	shimsel = shim32_setup();
-	if (shimsel == 0) {
-		perror("shim32_setup");
-		return (EXIT_FAILURE);
-	}
+	if (shimsel == 0)
+		err (1, "shim32_setup");
 
 	stack64.esp = (uint32_t)(uintptr_t)&stack[STACKSIZ-1];
 	asm ("mov %%ss, %0" : "=m"(stack64.ss));
 
-	if (setup_text(&text, &cs, &ds) != 0) {
-		perror("setup_text");
-		return (EXIT_FAILURE);
-	}
+	if (setup_text(&text, &cs, &ds) != 0)
+		err (1, "setup_text");
 
 	for (off = 0, n = 1; off < 65536 && n > 0; off += n)
 		n = read(aoutfd, text + off, 65536 - off);
 
-	if (n == -1) {
-		perror(prog);
-		return (EXIT_FAILURE);
-	}
+	if (n == -1)
+		err (1, "read('%s')", prog);
 
 	enter16(cs, ds, shimsel, setup_args(argv + 1));
-}
-
-static int
-xoflags (int oflags)
-{
-	int nflags = 0;
-
-	switch (oflags & 3) {
-	case 0:
-		nflags = O_RDONLY;
-		break;
-	case 1:
-		nflags = O_WRONLY;
-		break;
-	case 2:
-		nflags = O_RDWR;
-		break;
-	default:
-		return 0;
-	}
-
-	if (oflags & 0x0008)
-		nflags |= O_APPEND;
-	if (oflags & 0x0200)
-		nflags |= O_CREAT;
-	if (oflags & 0x0400)
-		nflags |= O_TRUNC;
-	if (oflags & 0x0800)
-		nflags |= O_EXCL;
-
-	return nflags;
-}
-
-static int
-doexecv (char *prog, uint16_t *argv)
-{
-	char	**hargv;
-	size_t	  i, argc;
-	int	  ret;
-
-	for (argc = 0; argv[argc] != 0; ++argc);
-
-	hargv = calloc (argc + 2, sizeof (char *));
-	hargv[0] = emu;
-	for (i = 0; i < argc; ++i) {
-		hargv[i + 1] = text + argv[i];
-	}
-	hargv[argc + 1] = NULL;
-	
-	ret = execv (emu, hargv);
-	warn ("execv");
-	free (hargv);
-	return ret;
-}
-
-static int
-mapws (int ws)
-{
-	if (WIFEXITED (ws)) {
-		return WEXITSTATUS (ws) << 8;
-	} else {
-		/* TODO */
-		return -1;
-	}
-}
-
-int
-sysentry(int ss, uint32_t esp, int no)
-{
-	char		*linsp;
-	uint16_t	*args;
-	int		 r, ws;
-
-	linsp = text + (esp & 0xffff);
-	args = (uint16_t *)(linsp + 6);
-
-	switch (no) {
-	case 0:
-		return sysentry (ss, esp + 2, args[0]);
-	case 1:
-		_exit(args[0]);
-	case 2:
-		return _write (args[0], text + args[1], args[2]);
-	case 3:
-		return read (args[0], text + args[1], args[2]);
-	case 4:
-		return close (args[0]);
-	case 5:
-		return lseek (args[0], args[1] | (args[2] << 16), args[3]);
-	case 6:
-		return unlink (text + args[0]);
-	case 7:
-		return open (text + args[0], xoflags (args[1]), args[2]);
-	case 8:
-		return creat (text + args[0], args[1]);
-	case 9:
-		return fork ();
-	case 10:
-		return doexecv (text + args[0], (uint16_t *)(text + args[1]));
-	case 11:
-		r = wait (&ws);
-		if (args[0] != 0)
-			*((uint16_t *)(text + args[0])) = mapws (ws);
-		return r;
-
-	default:
-		dprintf(STDERR_FILENO, "syscall%d(%d, %d, %d, %d)\n", no, args[0], args[1], args[2], args[3]);
-		return (0);
-	}
 }
