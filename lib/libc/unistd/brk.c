@@ -1,17 +1,14 @@
 #include <unistd.h>
 #include <errno.h>
 
-#define MINSTACK 512u
-#define MAXDATA (65536u - MINSTACK)
-
-extern char __brk[];
+extern char __brk[], __brk_end[];
 static void *__brkp = __brk;
 
 int
 brk (addr)
 void *addr;
 {
-	if ((unsigned)addr > MAXDATA) {
+	if ((char *)addr > __brk_end) {
 		errno = ENOMEM;
 		return -1;
 	}

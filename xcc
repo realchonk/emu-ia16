@@ -26,6 +26,7 @@ mode=
 files=''
 nfiles=0
 verbose=false
+nstack=2048
 cflags="-Og -ansi -ffreestanding -masm=intel -march=i286 -mcmodel=tiny -mprotected-mode -Wall -Wextra -isystem $root/lib/libc/include"
 ldflags="-nostdlib -L$root/lib/libc -lc -lgcc -Wl,--no-warn-rwx-segments"
 _output=''
@@ -55,6 +56,10 @@ while [ $# -ne 0 ]; do
 	-T)
 		ldscript=$2
 		shift 2
+		;;
+	-mstack=*)
+		nstack=$(printf '%s\n' "$1" | cut -d= -f2)
+		shift
 		;;
 	-*)
 		err "unsupported option: $1"
@@ -113,7 +118,7 @@ fi
 
 elf="${_output}.elf"
 
-$ld -o "$elf" -T "$ldscript" "$crt0" $objs $ldflags
+$ld -o "$elf" -Wl,--defsym,"STACK_SIZE=$nstack" -T "$ldscript" "$crt0" $objs $ldflags
 ec=$?
 [ "$ec" -ne 0 ] || $oc -O binary "$elf" "$_output"
 "$verbose" && $sz "$elf" >&2
