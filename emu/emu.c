@@ -18,6 +18,7 @@
 #elif defined(__FreeBSD__)
 #include <sys/types.h>
 #include <sys/mman.h>
+#include <sys/sysctl.h>
 #include <machine/param.h>
 #include <machine/sysarch.h>
 #include <machine/segments.h>
@@ -233,6 +234,46 @@ enter16(int cs, int ds, int shimsel, uint32_t sp)
 	__builtin_unreachable();
 }
 
+/* verify that pids fit into the guest's 16 bit ax register */
+static void
+checkpidmax(void)
+{
+#ifdef __linux__
+	char	 buf[32];
+	ssize_t	 n;
+	long	 pidmax;
+	int	 fd;
+
+	fd = open("/proc/sys/kernel/pid_max", O_RDONLY|O_CLOEXEC);
+	if (fd == -1)
+		err (1, "open('/proc/sys/kernel/pid_max')");
+
+	n = read(fd, buf, sizeof(buf) - 1);
+	if (n == -1)
+		err (1, "read('/proc/sys/kernel/pid_max')");
+
+	close(fd);
+	buf[n] = '\0';
+
+	pidmax = strtol(buf, NULL, 10);
+	if (pidmax > 32768)
+		errx (1, "kernel.pid_max (%ld) exceeds 32768 --"
+		          " guest pids would not fit into 16 bits."
+		          "  Run: sysctl -w kernel.pid_max=32768", pidmax);
+#elif defined(__FreeBSD__)
+	int	 pidmax;
+	size_t	 len = sizeof(pidmax);
+
+	if (sysctlbyname("kern.pid_max", &pidmax, &len, NULL, 0) == -1)
+		err (1, "sysctlbyname('kern.pid_max')");
+
+	if (pidmax > 32768)
+		errx (1, "kern.pid_max (%d) exceeds 32768 --"
+		         " guest pids would not fit into 16 bits."
+		         "  Run: sysctl -w kern.pid_max=32768", pidmax);
+#endif
+}
+
 int main(int argc, char *argv[])
 {
 	ssize_t	 n, off;
@@ -245,6 +286,8 @@ int main(int argc, char *argv[])
 	}
 	emu = argv[0];
 	prog = argv[1];
+
+	checkpidmax();
 
 	aoutfd = open(prog, O_RDONLY|O_CLOEXEC);
 	if (aoutfd == -1)
