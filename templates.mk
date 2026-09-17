@@ -108,25 +108,23 @@ run: ${BIN} ${EMU} ${RDEPS}
 	${EMU:F} ${BIN:F} ${ARGS}
 .endif
 
-.if !target(dump)
-## Disassemble ${NAME}
-dump: ${NAME}.elf
-	${OD} -ds -m i8086 -Mintel $< | bat -l asm
-.endif
+# TODO:
+# .if !target(dump)
+# ## Disassemble ${NAME}
+# dump: ${NAME}.elf
+# 	${OD} -ds -m i8086 -Mintel $< | bat -l asm
+# .endif
 
-.if !target(size)
-## Compute the size for ${NAME}
-size: ${NAME}.elf
-	${SIZE} $<
-.endif
+# .if !target(size)
+# ## Compute the size for ${NAME}
+# size: ${NAME}.elf
+# 	${SIZE} $<
+# .endif
 
-.if !target(${NAME}.elf)
-${NAME}.elf: ${OBJS} ${LIBDEPS}
+.if !target(${NAME})
+${NAME}: ${OBJS} ${LIBDEPS}
 	${LD} -o $@ ${OBJS:F} ${LDFLAGS}
 .endif
-
-${BIN}: ${NAME}.elf
-	${OC} -O binary $< $@
 
 .expand extra
 .endt

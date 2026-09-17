@@ -1,0 +1,121 @@
+#!/bin/sh
+
+err() {
+	echo "cc: $*" >&2
+	exit 1
+}
+
+compile() {
+	$cc -c -o "$1" "$2" $cflags
+}
+
+assemble() {
+	$as -o "$1" "$2" $asflags
+}
+
+as='nasm -felf32'
+cc='ia16-elf-gcc'
+oc='ia16-elf-objcopy'
+sz='ia16-elf-size'
+ld=$cc
+
+root=$(mk -V '$.')
+crt0="$root/lib/crt0.o"
+ldscript="$root/lib/user.x"
+mode=
+files=''
+nfiles=0
+verbose=false
+cflags="-Og -ansi -ffreestanding -masm=intel -march=i286 -mcmodel=tiny -mprotected-mode -Wall -Wextra -isystem $root/lib/libc/include"
+ldflags="-nostdlib -L$root/lib/libc -lc -lgcc -Wl,--no-warn-rwx-segments"
+_output=''
+
+while [ $# -ne 0 ]; do
+	case "$1" in
+	-v)
+		verbose=true
+		shift
+		;;
+	-c)
+		mode=$1
+		shift
+		;;
+	-o)
+		_output=$2
+		shift 2
+		;;
+	-O*|-I*|-w|-W*|-D*)
+		cflags="$cflags $1"
+		shift
+		;;
+	-L*|-l*)
+		ldflags="$ldflags $1"
+		shift
+		;;
+	-T)
+		ldscript=$2
+		shift 2
+		;;
+	-*)
+		err "unsupported option: $1"
+		;;
+	*)
+		files="$files $1"
+		nfiles=$((nfiles + 1))
+		shift
+		;;
+	esac
+done
+
+[ "$nfiles" -ne 0 ] || err "no source files"
+
+# compile
+
+objs=''
+robjs=''
+for file in $files; do
+	obj=$(echo "$file" | sed 's/\..*$/\.o/')
+	objs="$objs $obj"
+	case "$file" in
+	*.c)
+		compile "$obj" "$file"
+		ec=$?
+		robjs="$robjs $obj"
+		;;
+	*.asm)
+		assemble "$obj" "$file"
+		ec=$?
+		robjs="$robjs $obj"
+		;;
+	*.o)
+		ec=0
+		;;
+	*)
+		rm -f $robjs
+		err "unsupported source file: $file"
+		;;
+	esac
+	if [ "$ec" -ne 0 ]; then
+		rm -f $robjs
+		exit 1
+	fi
+done
+
+# link
+if [ "$mode" = -c ]; then
+	if [ "$_output" ]; then
+		[ "$_output" = $objs ] || mv $objs "$_output" || exit 1
+	fi
+	exit 0
+fi
+
+[ "$_output" ] || _output='a.out'
+
+elf="${_output}.elf"
+
+$ld -o "$elf" -T "$ldscript" "$crt0" $objs $ldflags
+ec=$?
+[ "$ec" -ne 0 ] || $oc -O binary "$elf" "$_output"
+"$verbose" && $sz "$elf" >&2
+rm -f $robjs "$elf"
+exit "$ec"
