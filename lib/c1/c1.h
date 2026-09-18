@@ -2,13 +2,25 @@
 #define FILE_C1_H
 #include <stddef.h>
 
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+
 #define NSPOOL	256	/* maximum number of stmts */
 #define NEPOOL	1024	/* maximum number of exprs */
-#define NLPOOL	256	/* maximum number of local variables */
+#define NLPOOL	64	/* maximum number of local variables */
+#define NRPOOL	512	/* maximum number of registers */
+#define MAXARGS	16	/* maximum number of arguments for function call */
+
+#define BYTE	0
+#define WORD	1
+#define DWORD	2
 
 typedef unsigned char	byte;
 typedef unsigned short	word;
 typedef unsigned long	dword;
+
+extern word	rpool[NRPOOL], maxlbl, soff;
+extern size_t	nrpool, off;
+extern int	ofd, tfd;
 
 struct expr {
 	struct expr	*e_next;
@@ -105,13 +117,18 @@ struct stmt {
 	} s_v;
 };
 
-extern struct stmt	spool[NSPOOL];
-extern struct expr	epool[NEPOOL];
-extern word		lpool[NLPOOL];
-
 #define s_sym	s_v.sv_sym
 #define s_e	s_v.sv_e
 #define s_R	s_v.sv_R
 #define s_B	s_v.sv_B
+
+byte	getb ();
+word	getw ();
+dword	getd ();
+void	putb ();
+void	putw ();
+void	putd ();
+void	parse ();
+void	estmt ();
 
 #endif /* FILE_C1_H */

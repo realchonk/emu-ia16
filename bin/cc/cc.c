@@ -119,14 +119,15 @@ char *input, *astfile, *strfile, *symfile;
 }
 
 static int
-runc1 (astfile, irfile)
-char *astfile, *irfile;
+runc1 (astfile, irfile, tmpfile)
+char *astfile, *irfile, *tmpfile;
 {
-	char	*argv[2];
+	char	*argv[3];
 	int	 ws;
 
 	argv[0] = C1;
-	argv[1] = NULL;
+	argv[1] = tmpfile;
+	argv[2] = NULL;
 
 	switch (fork ()) {
 	case -1:
@@ -156,14 +157,15 @@ static int
 compile (arg)
 char **arg;
 {
-	char	*i, *ast, *str, *sym, *ir;
+	char	*i, *ast, *str, *sym, *tmp, *ssa;
 	int	 ret = -1;
 
 	i	= ssuffix (*arg, "i");
 	ast	= ssuffix (*arg, "ast");
 	str	= ssuffix (*arg, "str");
 	sym	= ssuffix (*arg, "sym");
-	ir	= ssuffix (*arg, "ir");
+	tmp	= ssuffix (*arg, "tmp");
+	ssa	= ssuffix (*arg, "ssa");
 
 	printf ("%s:\n", *arg);
 
@@ -173,7 +175,7 @@ char **arg;
 	if (runc0 (i, ast, str, sym) != 0)
 		goto fail;
 
-	if (runc1 (ast, ir) != 0)
+	if (runc1 (ast, ssa, tmp) != 0)
 		goto fail;
 
 	ret = 0;
@@ -184,13 +186,15 @@ fail:
 		unlink (ast);
 		unlink (sym);
 		unlink (str);
-		unlink (ir);
+		unlink (ast);
+		unlink (tmp);
 	}
 	free (i);
 	free (ast);
 	free (sym);
 	free (str);
-	free (ir);
+	free (ast);
+	free (tmp);
 	return ret;
 }
 

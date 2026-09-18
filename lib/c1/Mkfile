@@ -1,4 +1,4 @@
 NAME = c1
-OBJS = main.o
+OBJS = main.o parse.o emit.o
 
 .expand prog

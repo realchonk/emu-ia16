@@ -1,13 +1,13 @@
-# *.symbol
+# *.sym
 All symbol names used by the IR, separated by NUL bytes.  A `sym` is
 the byte offset of a name in this file.
 Mangled names: user labels are "func.label", static locals are
 "func.name", generated labels are ".Ln", switch temporaries are ".swN".
 
-# *.string
+# *.str
 All strings from the C file, separated by NUL bytes.
 
-# *.ir
+# *.ast
 Magic: "CIR\0"
 
 ## Misc Stuff
@@ -61,8 +61,8 @@ init: chunk* (exactly `size` bytes; c1 pads with zeros)
 				file entry six + addend
 	0x00			end of chunks
 
-Function Definition: "F" flags sym code "\xff" args "\xff\xff" vars "\xff\xff"
 Function Declaration: "F" flags sym "\xff"
+Function Definition: "F" flags sym code "\xff" args "\xff\xff" vars "\xff\xff"
 flags (byte):
 	[1:0]:	storage class, see "D"
 	[2]:	definition (with code and the lists); without it this
@@ -130,3 +130,76 @@ Address of, casts, member access ".", "->", index "[]" and sizeof
 	just the address expression of x, casts retype a node and
 	rely on width reconciliation, "a[i]" is *(a + i*scale), "p->m"
 	is *(p + offset)).
+
+# *.ssa
+Magic: "CIR\001"
+
+## Misc Stuff
+reg: word
+	Index into the register table.
+	-1 (0xffff) has special meaning
+size: byte
+	0=byte, 1=word, 2=dword
+
+## Global Definitions
+
+Data Declaration: (see *.ast)
+
+Function Declaration: "F" flags sym "\xff"
+Function Definition: "F" flags sym args "\xff\xff" vars "\xff\xff" regs "\xff\xff" code "\xff"
+
+flags, args, vars: see *.ast
+	[1:0]:	storage class, see "D"
+	[2]:	definition (with code and the lists); without it this
+		is a declaration and the rest is omitted
+regs (word):
+	[15:14]: byte=00, word=01, dword=10
+	[13: 0]: stack offset of SSA register
+	registers may share addresses, if their lifetimes don't overlap
+	there are special addresses for CPU registers:
+	: byte
+	- al: -2
+	- ah: -3
+	- bl: -4
+	- bh: -5
+	- cl: -6
+	- ch: -7
+	- dl: -8
+	- dh: -9
+	: word
+	- ax: -2
+	- bx: -4
+	- cx: -6
+	- dx: -8
+	- si: -10
+	- di: -12
+code (stmts):
+	SSA code
+
+## SSA stmts
+
+Label:			"L" sym reg
+	When jumping to a label, a value can be passed.
+	If reg==-1, then the label has no associated value
+Jump:			"J" sym reg
+Branch:			"B" reg tsym treg fsym freg
+Return (no vaule):	"r"
+Return (with value):	"R" reg
+Integer:		"i" size reg byte|word|dword
+String:			"S" reg six
+Global Symbol:		"g" reg sym
+Local Symbol:		"l" reg byte
+Cast:			"C" flags dreg sreg
+	flags: 0=truncate, 1=zero-extend, 2=sign-extend
+Call:			"c" flags nargs func (ty arg){nargs}
+	flags: byte
+	[1:0]:	size
+	[2]:	far call (TODO)
+Store:			"=" size dreg sreg
+Load:			"*" size dreg sreg
+Unary:			"u" size op dreg sreg
+Binary:			"b" flags op dreg areg breg/imm
+	flags: byte
+	[1:0]:	size
+	[2]:	signed
+	[3]:	second operand is an immediate
