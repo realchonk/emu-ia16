@@ -32,6 +32,7 @@ OBJS =	stdio/_printf.o		\
 	stdio/vsnprintf.o	\
 	stdio/vsprintf.o	\
 	stdlib/abort.o		\
+	stdlib/assert.o		\
 	stdlib/atoi.o		\
 	stdlib/calloc.o		\
 	stdlib/ctype.o		\
