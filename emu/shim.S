@@ -1,8 +1,10 @@
 /* Copyright (c) 2026 Robert Clausecker */
-shim64:	push	%rdx
+shim64:	sub	$8, %rsp	# TODO: remove this
 	movzwl	%ax, %edx	# get system call number (guest only sets %ax)
 	call	sysentry
-	pop	%rdx
+	add	$8, %rsp
+	mov	%rax, %rdx
+	shr	$16, %rdx
 	lretl
 	.size	shim64, .-shim64
 
