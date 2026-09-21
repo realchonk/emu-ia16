@@ -151,3 +151,12 @@ void *ptr;
 	}
 	
 }
+
+/* free all heap memory in one go */
+void
+freeall (void)
+{
+	extern char __brk[];
+	brk (__brk);
+	free_list = NULL;
+}

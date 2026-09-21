@@ -12,6 +12,7 @@ void	*malloc ();
 void	*calloc ();
 void	*realloc ();
 void	 free ();
+void	 freeall ();
 
 int	 atoi ();
 
