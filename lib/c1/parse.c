@@ -75,7 +75,9 @@ def ()
 			return;
 
 		case 0x01: /* wordn ... */
-			for (i = getw (); i != 0; --i)
+			i = getw ();
+			putw (i);
+			for (; i != 0; --i)
 				putb (getb ());
 			break;
 		case 0x02: /* sym word-addend */
@@ -335,6 +337,7 @@ parse ()
 		default:
 			err (1, "read()");
 		}
+		++off;
 
 		switch (type) {
 		case 'F':
@@ -344,7 +347,7 @@ parse ()
 			def ();
 			break;
 		default:
-			errx (1, "0x%zx: invalid global: %x", off - 1, type);
+			errx (1, "0x%zx: invalid global: %c (%x)", off - 1, type, type);
 		}
 	}
 }
