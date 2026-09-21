@@ -1,7 +1,8 @@
 
+int x = 42;
+
 int
 main ()
 {
-	long *s;
-	return *s++;
+	return 0;
 }

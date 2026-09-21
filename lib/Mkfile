@@ -1,4 +1,4 @@
-.SUBDIRS: libc cpp c0 c1
+.SUBDIRS: libc cpp c0 c1 c3
 
 BINDIR = ${PREFIX}/lib
 .EXPORTS: BINDIR

@@ -2,12 +2,14 @@
 /bin/echo/echo
 /bin/cat/cat
 /bin/cc/cc
+/bin/cc/*.asm
 /bin/hello/hello
 /bin/yacc/yacc
 /bin/yacc/yacc.*
 /bin/yacc/y.tab.c
 /lib/c0/c0
 /lib/c1/c1
+/lib/c3/c3
 /_install
 **/*.o
 **/*.elf

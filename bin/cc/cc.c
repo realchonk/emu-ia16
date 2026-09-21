@@ -31,6 +31,10 @@
 # define C1		LIBDIR "/c1"
 #endif
 
+#ifndef C3
+# define C3		LIBDIR "/c3"
+#endif
+
 static bool keeptemps = false;
 
 static char *
@@ -131,7 +135,7 @@ char *astfile, *irfile, *tmpfile;
 
 	switch (fork ()) {
 	case -1:
-		err (1, "10: fork()");
+		err (1, "c1: fork()");
 	case 0:
 		close (0);
 		if (open (astfile, O_RDONLY) != 0)
@@ -154,10 +158,45 @@ char *astfile, *irfile, *tmpfile;
 }
 
 static int
+runc3 (ssafile, asfile, strfile, symfile)
+char *ssafile, *asfile, *strfile, *symfile;
+{
+	char	*argv[4];
+	int	 ws;
+
+	argv[0] = C3;
+	argv[1] = strfile;
+	argv[2] = symfile;
+	argv[3] = NULL;
+	
+	switch (fork ()) {
+	case -1:
+		err (1, "c3: fork()");
+	case 0:
+		close (0);
+		if (open (ssafile, O_RDONLY) != 0)
+			err (1, "c3: open('%s')", ssafile);
+		close (1);
+		if (open (asfile, O_WRONLY | O_CREAT | O_TRUNC, 0644) != 1)
+			err (1, "c3: open('%s')", asfile);
+		execv (C3, argv);
+		err (1, "c3: execv('%s')", C3);
+	default:
+		if (wait (&ws) == -1)
+			err (1, "c3: wait()");
+		if (!WIFEXITED (ws) || WEXITSTATUS (ws) != 0) {
+			warnx ("c3");
+			return 1;
+		}
+		return 0;
+	}
+}
+
+static int
 compile (arg)
 char **arg;
 {
-	char	*i, *ast, *str, *sym, *tmp, *ssa;
+	char	*i, *ast, *str, *sym, *tmp, *ssa, *as;
 	int	 ret = -1;
 
 	i	= ssuffix (*arg, "i");
@@ -166,6 +205,7 @@ char **arg;
 	sym	= ssuffix (*arg, "sym");
 	tmp	= ssuffix (*arg, "tmp");
 	ssa	= ssuffix (*arg, "ssa");
+	as	= ssuffix (*arg, "asm");
 
 	printf ("%s:\n", *arg);
 
@@ -178,6 +218,9 @@ char **arg;
 	if (runc1 (ast, ssa, tmp) != 0)
 		goto fail;
 
+	if (runc3 (ssa, as, str, sym) != 0)
+		goto fail;
+
 	ret = 0;
 
 fail:
@@ -188,6 +231,7 @@ fail:
 		unlink (str);
 		unlink (ast);
 		unlink (tmp);
+		unlink (as);
 	}
 	free (i);
 	free (ast);
@@ -195,6 +239,7 @@ fail:
 	free (str);
 	free (ast);
 	free (tmp);
+	free (as);
 	return ret;
 }
 
