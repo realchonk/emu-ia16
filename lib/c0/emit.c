@@ -723,6 +723,10 @@ struct type *oty;
 		emaddr (e->n_l);
 		return;
 	case '*':
+		if (e->n_r != NULL) {
+			embin ('*', ty, e->n_l, e->n_r);
+			return;
+		}
 		wbyte ('*');
 		wty (ty, tysize (e->n_tp));
 		emexpr (e->n_l, NULL);
