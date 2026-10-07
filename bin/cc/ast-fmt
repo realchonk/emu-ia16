@@ -134,72 +134,58 @@ Address of, casts, member access ".", "->", index "[]" and sizeof
 # *.ssa
 Magic: "CIR\001"
 
+The SSA form uses block arguments instead of phi nodes: a label declares
+parameters and every jump/branch binds them by position, like a function call.
+This makes the parallel copy a phi would imply explicit on the edge.
+
 ## Misc Stuff
 reg: word
 	Index into the register table.
-	-1 (0xffff) has special meaning
+	-1 (0xffff) means "no value" where a value is optional.
 size: byte
 	0=byte, 1=word, 2=dword
 
 ## Global Definitions
 
-Data Declaration: (see *.ast)
+Data Declaration: (see *.ast; passed through unchanged)
 
 Function Declaration: "F" flags sym "\xff"
-Function Definition: "F" flags sym args "\xff\xff" vars "\xff\xff" regs "\xff\xff" code "\xff"
+Function Definition: "F" flags sym args "\xff\xff" vars "\xff\xff" code "\xff" regs "\xff\xff" "\xff"
 
 flags, args, vars: see *.ast
 	[1:0]:	storage class, see "D"
 	[2]:	definition (with code and the lists); without it this
 		is a declaration and the rest is omitted
+	args:	word sizes in bytes, in declaration order
+	vars:	word sizes in bytes, in declaration order
+	`l slot` indexes the concatenation args+vars.
 regs (word):
+	one entry per SSA value; value ids are 0-based indices.
 	[15:14]: byte=00, word=01, dword=10
-	[13: 0]: stack offset of SSA register
-	registers may share addresses, if their lifetimes don't overlap
-	there are special addresses for CPU registers:
-	: byte
-	- al: -2
-	- ah: -3
-	- bl: -4
-	- bh: -5
-	- cl: -6
-	- ch: -7
-	- dl: -8
-	- dh: -9
-	: word
-	- ax: -2
-	- bx: -4
-	- cx: -6
-	- dx: -8
-	- si: -10
-	- di: -12
-code (stmts):
-	SSA code
+	[13: 0]: reserved (0); c3 assigns homes itself
 
 ## SSA stmts
 
-Label:			"L" sym reg
-	When jumping to a label, a value can be passed.
-	If reg==-1, then the label has no associated value
-Jump:			"J" sym reg
-Branch:			"B" reg tsym treg fsym freg
-Return (no vaule):	"r"
-Return (with value):	"R" reg
-Integer:		"i" size reg byte|word|dword
-String:			"S" reg six
-Global Symbol:		"g" reg sym
-Local Symbol:		"l" reg byte
-Cast:			"C" flags dreg sreg
+Label:			"L" sym nparams p0 ... p(nparams-1)
+	Declares a block and the values it receives as block arguments.
+	Most labels (c0's own control flow) have 0 params; only the synthetic
+	merge blocks of &&, || and ?: have 1.
+Jump:			"J" sym nargs a0 ... a(nargs-1)
+Branch:			"B" cond tsym tn t0... fsym fn f0...
+	cond is a value; the true edge binds `tn` args to tsym and the
+	false edge binds `fn` args to fsym.
+Return (no value):	"r"
+Return (with value):	"R" src
+Integer:		"i" size dst byte|word|dword
+String:			"S" dst six
+Global Symbol:		"g" dst sym		(address, a word)
+Local Symbol:		"l" dst slot		(address, a word)
+Cast:			"C" flags dst src
 	flags: 0=truncate, 1=zero-extend, 2=sign-extend
-Call:			"c" flags nargs func (ty arg){nargs}
-	flags: byte
-	[1:0]:	size
-	[2]:	far call (TODO)
-Store:			"=" size dreg sreg
-Load:			"*" size dreg sreg
-Unary:			"u" size op dreg sreg
-Binary:			"b" flags op dreg areg breg/imm
-	flags: byte
-	[1:0]:	size
-	[2]:	signed
-	[3]:	second operand is an immediate
+Call:			"c" size nargs dst func (ty arg){nargs}
+Store:			"=" size dst src	(dst is an address; [dst] = src)
+Load:			"*" size dst src	(dst = [src])
+Unary:			"u" size op dst src
+Binary:			"b" flags op dst a b
+	flags: byte; [1:0] size, [2] signed, [3] b is an immediate
+	(nargs, nparams, tn, fn are words, not bytes)

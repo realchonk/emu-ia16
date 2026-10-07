@@ -8,10 +8,15 @@ CFLAGS += -DC0=\"$./lib/c0/c0\"
 CFLAGS += -DC1=\"$./lib/c1/c1\"
 CFLAGS += -DC3=\"$./lib/c3/c3\"
 
-ARGS ?= cc.c -k
 RDEPS = $./lib/cpp $./lib/c0 $./lib/c1 $./lib/c3
 
+run: ${RDEPS} cc
+	${EMU} ./cc test.c -k
+	$./xcc -o test test.asm
+	${EMU} ./test
+
+
 clean-extra:
-	rm -f *.i *.ast *.str *.sym *.ssa *.tmp
+	rm -f *.i *.ast *.str *.sym *.ssa *.tmp *.asm test
 
 .expand prog

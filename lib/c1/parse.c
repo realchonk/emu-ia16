@@ -5,31 +5,13 @@
 
 static struct stmt	spool[NSPOOL];
 static struct expr	epool[NEPOOL];
-static word		lpool[NLPOOL];
-static size_t		nspool, nepool, nlpool, narg;
+static size_t		nspool, nepool;
 word			maxlbl;
 
-static void
-copy (sfd, dfd, num)
-int	sfd, dfd;
-size_t	num;
-{
-	char	buf[64];
-	int	n;
-
-	for (; num != 0; num -= n) {
-		n = read (sfd, buf, MIN (sizeof (buf), num));
-		if (n < 0)
-			err (1, "read()");
-
-		if (n == 0)
-			errx (1, "tmp eof");
-
-		if (write (dfd, buf, n) != n)
-			err (1, "write()");
-	}
-
-}
+/* exported to ssa.c */
+struct stmt		*shead;
+word			 argbuf[NLPOOL], varbuf[NLPOOL];
+size_t			 nargbuf, nvarbuf;
 
 static struct stmt *
 salloc ()
@@ -217,11 +199,14 @@ stmt ()
 	case 'r':
 		break;
 	case 'L':
+		s->s_sym = getw ();
 		if (s->s_sym > maxlbl)
 			maxlbl = s->s_sym;
-		/* fallthrough */
+		break;
 	case 'J':
 		s->s_sym = getw ();
+		if (s->s_sym > maxlbl)
+			maxlbl = s->s_sym;
 		break;
 	case 'R':
 		s->s_R.R_ty = ty ();
@@ -230,6 +215,10 @@ stmt ()
 	case 'B':
 		s->s_B.B_t = getw ();
 		s->s_B.B_f = getw ();
+		if (s->s_B.B_t > maxlbl)
+			maxlbl = s->s_B.B_t;
+		if (s->s_B.B_f > maxlbl)
+			maxlbl = s->s_B.B_f;
 		s->s_B.B_c = expr ();
 		break;
 	case 'E':
@@ -245,11 +234,10 @@ stmt ()
 static void
 func ()
 {
-	struct stmt	*shead, *stail, *s;
+	struct stmt	*stail, *s;
 	byte		 flags;
 	word		 w, sym;
-	long		 n;
-	size_t		 i, o;
+	size_t		 o;
 
 	o	= off;
 	flags	= getb ();
@@ -257,20 +245,18 @@ func ()
 
 	/* warnx ("0x%zx: F: flags=%x, sym=%u", o, flags, sym); */
 
-	putb ('F');
-	putb (flags);
-	putw (sym);
-
 	if (!(flags & 0x04)) {
 		if (getb () != 0xff)
 			errx (1, "%zx: malformed F", o);
+		putb ('F');
+		putb (flags);
+		putw (sym);
 		putb (0xff);
 		return;
 	}
 
-	nspool	= nepool = nlpool = nrpool = 0;
+	nspool	= nepool = 0;
 	maxlbl	= 0x8000;
-	soff	= 0;
 
 	/* code */
 	shead = stail = stmt ();
@@ -282,36 +268,14 @@ func ()
 		} while (s->s_type != 0xff);
 	}
 
-	/* args */
-	while ((w = getw ()) != 0xffff) {
-		lpool[nlpool++] = w;
-		putw (w);
-	}
-	putw (0xffff);
-	narg = nlpool;
+	/* args, then vars: kept for ssa_func() */
+	nargbuf = nvarbuf = 0;
+	while ((w = getw ()) != 0xffff)
+		argbuf[nargbuf++] = w;
+	while ((w = getw ()) != 0xffff)
+		varbuf[nvarbuf++] = w;
 
-	/* vars */
-	while ((w = getw ()) != 0xffff) {
-		lpool[nlpool++] = w;
-		putw (w);
-	}
-	putw (0xffff);
-
-	ofd = tfd;
-	n = lseek (tfd, 0L, SEEK_SET);
-	for (s = shead; s->s_type != 0xff; s = s->s_next)
-		estmt (s);
-	n = lseek (tfd, 0L, SEEK_CUR);
-	lseek (tfd, 0L, SEEK_SET);
-	ofd = 1;
-
-	/* regs */
-	for (i = 0; i < nrpool; ++i)
-		putw (rpool[i]);
-	putw (0xffff);
-
-	copy (tfd, ofd, n);
-	putb (0xff);
+	ssa_func (flags, sym);
 }
 
 void

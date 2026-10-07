@@ -4,11 +4,13 @@
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
-#define NSPOOL	256	/* maximum number of stmts */
-#define NEPOOL	1024	/* maximum number of exprs */
+#define NSPOOL	512	/* maximum number of stmts */
+#define NEPOOL	2304	/* maximum number of exprs */
 #define NLPOOL	64	/* maximum number of local variables */
-#define NRPOOL	512	/* maximum number of registers */
+#define NVALUE	2048	/* maximum number of SSA values per function */
+#define NBLK	256	/* maximum number of labelled blocks */
 #define MAXARGS	16	/* maximum number of arguments for function call */
+#define CBUF	8192	/* SSA code bytes buffered per function */
 
 #define BYTE	0
 #define WORD	1
@@ -18,7 +20,7 @@ typedef unsigned char	byte;
 typedef unsigned short	word;
 typedef unsigned long	dword;
 
-extern word	rpool[NRPOOL], maxlbl, soff;
+extern word	rpool[NVALUE], maxlbl, soff;
 extern size_t	nrpool, off;
 extern int	ofd, tfd;
 
@@ -129,6 +131,8 @@ void	putb ();
 void	putw ();
 void	putd ();
 void	parse ();
-void	estmt ();
+
+/* new c1 backend: lower one function definition to SSA */
+void	ssa_func ();
 
 #endif /* FILE_C1_H */
