@@ -90,10 +90,15 @@ compute_intervals ()
 			touch (ins[i].v.C.a, 0, i);
 			vclass[ins[i].v.C.dst] = vclass[ins[i].v.C.a];
 			break;
-		case '*': case '=':
+		case '*':
 			touch (ins[i].v.m.dst, i, i);
 			touch (ins[i].v.m.a, 0, i);
 			vclass[ins[i].v.m.a] = CL_ADDR;
+			break;
+		case '=':
+			touch (ins[i].v.m.dst, 0, i);
+			touch (ins[i].v.m.a, 0, i);
+			vclass[ins[i].v.m.dst] = CL_ADDR;
 			break;
 		case 'u':
 			touch (ins[i].v.u.dst, i, i);

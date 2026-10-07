@@ -1,8 +1,10 @@
 /*
  * ssa.c -- lower a c0 AST function body to the SSA form described in
  * bin/cc/ast-fmt.  Values are 0-based ids; control flow carries block
- * arguments instead of phi nodes.  The code stream is buffered in memory
- * because the register table (one entry per value) is emitted after it.
+ * arguments instead of phi nodes.  The code stream is written to the
+ * scratch file tfd as it is generated, because the value table (one entry
+ * per value) has to follow it but is only complete once lowering is done;
+ * the bytes are copied to the output afterwards.
  */
 #include <string.h>
 #include <unistd.h>
@@ -13,9 +15,8 @@
 static byte	vsz[NVALUE];		/* size code per value */
 static word	nval;
 
-/* ---- code buffer ------------------------------------------------------ */
-static byte	cbuf[CBUF];
-static size_t	clen;
+/* ---- code stream (tfd) ------------------------------------------------ */
+static size_t	clen;			/* bytes written for this function */
 
 /* ---- synthetic label allocator ---------------------------------------- */
 static word	nxtlbl;
@@ -34,9 +35,11 @@ static void
 ecb (b)
 byte b;
 {
-	if (clen >= CBUF)
-		errx (1, "ssa: code too large: clen=%d", (int)clen);
-	cbuf[clen++] = b;
+	char c = b;
+
+	if (write (tfd, &c, 1) != 1)
+		err (1, "write()");
+	++clen;
 }
 
 static void
@@ -602,7 +605,8 @@ byte flags;
 word sym;
 {
 	struct stmt *s;
-	size_t i;
+	size_t i, n;
+	char buf[128];
 
 	putb ('F');
 	putb (flags);
@@ -620,14 +624,25 @@ word sym;
 	nxtlbl = maxlbl + 1;
 	open = 0;
 
+	if (lseek (tfd, 0L, SEEK_SET) != 0)
+		err (1, "lseek()");
+
 	for (s = shead; s->s_type != 0xff; s = s->s_next)
 		estmt (s);
 
 	if (open)
 		ecb ('r');		/* implicit fall-through return */
 
-	for (i = 0; i < clen; ++i)
-		putb (cbuf[i]);
+	/* copy the code out of the scratch file, then append the table */
+	if (lseek (tfd, 0L, SEEK_SET) != 0)
+		err (1, "lseek()");
+	for (n = clen; n > 0; n -= i) {
+		i = n < sizeof buf ? n : sizeof buf;
+		if (read (tfd, buf, i) != (int) i)
+			err (1, "read()");
+		if (write (ofd, buf, i) != (int) i)
+			err (1, "write()");
+	}
 	putb (0xff);
 
 	for (i = 0; i < nval; ++i)

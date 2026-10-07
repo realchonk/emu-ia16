@@ -91,6 +91,23 @@ ty ()
 	return 0x8000 | n;
 }
 
+/* an inline function declaration: "F" flags sym "\xff" (see stmt()) */
+static void
+fdecl ()
+{
+	byte flags;
+	word sym;
+
+	flags = getb ();
+	sym = getw ();
+	if (getb () != 0xff)
+		errx (1, "0x%zx: malformed inline F", off - 1);
+	putb ('F');
+	putb (flags);
+	putw (sym);
+	putb (0xff);
+}
+
 static struct expr *
 expr ()
 {
@@ -198,6 +215,17 @@ stmt ()
 	case 0xff:
 	case 'r':
 		break;
+	case 'D':
+		/* A static local: c0 streams its data record inline with
+		   the function body, but it is a top-level definition.
+		   Emit it now (before the F record is written) and skip
+		   it in the statement list. */
+		def ();
+		return stmt ();
+	case 'F':
+		/* A function declaration inside a body: same treatment. */
+		fdecl ();
+		return stmt ();
 	case 'L':
 		s->s_sym = getw ();
 		if (s->s_sym > maxlbl)
