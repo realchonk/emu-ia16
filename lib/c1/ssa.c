@@ -177,21 +177,6 @@ word ty, s;
 }
 
 static word
-emit_ext (sg, s)
-int sg;				/* 1 = sign-extend, 0 = zero-extend */
-word s;
-{
-	word d;
-
-	d = newval (WORD);
-	ecb ('C');
-	ecb (sg ? 2 : 1);
-	ecw (d);
-	ecw (s);
-	return d;
-}
-
-static word
 emit_un (sz, op, s)
 int sz;
 byte op;

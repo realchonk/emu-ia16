@@ -66,7 +66,7 @@ compute_intervals ()
 	word v;
 
 	for (v = 0; v < nval; ++v) {
-		ivlo[v] = 0x7fffffff;
+		ivlo[v] = 0x7fff;
 		ivhi[v] = -1;
 		vclass[v] = CL_VAL;
 	}
@@ -114,19 +114,19 @@ compute_intervals ()
 			touch (ins[i].v.R.a, 0, i);
 			break;
 		case 'J':
-			for (k = 0; k < ins[i].v.L.n; ++k)
+			for (k = 0; k < (int) ins[i].v.L.n; ++k)
 				touch (argpool[ins[i].v.L.argi + k], 0, i);
 			break;
 		case 'B':
 			touch (ins[i].v.B.a, 0, i);
-			for (k = 0; k < ins[i].v.B.n; ++k)
+			for (k = 0; k < (int) ins[i].v.B.n; ++k)
 				touch (argpool[ins[i].v.B.argi + k], 0, i);
-			for (k = 0; k < ins[i].v.B.nfalse; ++k)
+			for (k = 0; k < (int) ins[i].v.B.nfalse; ++k)
 				touch (argpool[ins[i].v.B.fargi + k], 0, i);
 			break;
 		case 'L':
-			for (k = 0; k < ins[i].v.L.n; ++k)
-				touch (argpool[ins[i].v.L.argi + k], i, 0x7fffffff);
+			for (k = 0; k < (int) ins[i].v.L.n; ++k)
+				touch (argpool[ins[i].v.L.argi + k], i, 0x7fff);
 			break;
 		}
 	}
@@ -154,19 +154,6 @@ int r;
 {
 	if (vclass[v] == CL_ADDR && !addrreg[r])
 		return 0;
-	return 1;
-}
-
-static int
-regfree (owner, r, v)
-int *owner, r;
-word v;
-{
-	int i;
-
-	if (owner[r] != -1)
-		return 0;
-	(void) v; (void) i;
 	return 1;
 }
 
@@ -348,6 +335,7 @@ word v;
 int r;
 int pc;
 {
+	(void) pc;
 	if (vhome[v] == 0) {
 		if (vreg[v] != r)
 			printf ("\tmov %s, %s\n", regname[r], regname[vreg[v]]);
@@ -361,22 +349,11 @@ word v;
 int r;
 int pc;
 {
+	(void) pc;
 	if (vhome[v] == 1)
 		printf ("\tmov [bp%+d], %s\n", vslot[v], regname[r]);
 	else if (vreg[v] != r)
 		printf ("\tmov %s, %s\n", regname[vreg[v]], regname[r]);
-}
-
-/* move src value into dst value's home */
-static void
-moveval (src, dst, pc)
-word src, dst;
-int pc;
-{
-	char a[32];
-
-	readop (src, a, pc);
-	stohome (dst, R_AX, pc);	/* placeholder; fixed below */
 }
 
 static struct insn *

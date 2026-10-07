@@ -21,8 +21,7 @@ ldivmod.o: ldivmod.asm
 parse.o: $./bin/yacc/yacc $./emu/emu c0.y c0.h lex.c main.c type.c \
 		decl.c expr.c stmt.c emit.c
 	${YACC} c0.y
-	${CC} -c -o $@ y.tab.c ${CFLAGS} -Wno-implicit-int -Wno-return-type \
-		-Wno-implicit-function-declaration -Wno-unused-label
+	${CC} -c -o $@ y.tab.c ${CFLAGS}
 	rm -f y.tab.c
 
 clean-extra:

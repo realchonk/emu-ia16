@@ -279,14 +279,14 @@ func ()
 			ins[i].v.L.lab = getw ();
 			ins[i].v.L.n = getw ();
 			ins[i].v.L.argi = nargpool;
-			for (k = 0; k < ins[i].v.L.n; ++k)
+			for (k = 0; k < (int) ins[i].v.L.n; ++k)
 				argpool[nargpool++] = getw ();
 			break;
 		case 'J':
 			ins[i].v.L.lab = getw ();
 			ins[i].v.L.n = getw ();
 			ins[i].v.L.argi = nargpool;
-			for (k = 0; k < ins[i].v.L.n; ++k)
+			for (k = 0; k < (int) ins[i].v.L.n; ++k)
 				argpool[nargpool++] = getw ();
 			break;
 		case 'B':
@@ -294,12 +294,12 @@ func ()
 			ins[i].v.B.lab = getw ();
 			ins[i].v.B.n = getw ();
 			ins[i].v.B.argi = nargpool;
-			for (k = 0; k < ins[i].v.B.n; ++k)
+			for (k = 0; k < (int) ins[i].v.B.n; ++k)
 				argpool[nargpool++] = getw ();
 			ins[i].v.B.lab2 = getw ();
 			ins[i].v.B.nfalse = getw ();
 			ins[i].v.B.fargi = nargpool;
-			for (k = 0; k < ins[i].v.B.nfalse; ++k)
+			for (k = 0; k < (int) ins[i].v.B.nfalse; ++k)
 				argpool[nargpool++] = getw ();
 			break;
 		default:

@@ -1,6 +1,4 @@
 NAME = c3
 OBJS = main.o emit.o
 
-CFLAGS += -Wno-implicit-int -Wno-implicit-function-declaration -Wno-return-type
-
 .expand prog
