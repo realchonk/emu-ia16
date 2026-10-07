@@ -154,7 +154,7 @@ void *ptr;
 
 /* free all heap memory in one go */
 void
-freeall (void)
+freeall ()
 {
 	extern char __brk[];
 	brk (__brk);
