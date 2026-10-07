@@ -40,9 +40,9 @@ _start:
 	; read sectors
 	xor ax, ax
 	mov es, ax
-	mov bx, 0x400	; load directly after the IVT
+	mov bx, 0x600	; load after the IVT and BDA
 	mov ah, 0x02
-	mov al, 126
+	mov al, 125
 	xor ch, ch
 	mov cl, 2
 	mov dl, byte [bootdisk]
@@ -51,7 +51,7 @@ _start:
 	jc .error
 
 	; jump into the kernel
-	jmp 0:0x400
+	jmp 0:0x600
 
 .error:
 	lea si, [errstr]
