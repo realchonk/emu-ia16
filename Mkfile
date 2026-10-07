@@ -1,4 +1,4 @@
-.SUBDIRS: emu lib bin
+.SUBDIRS: emu lib bin boot
 
 include config.mk
 

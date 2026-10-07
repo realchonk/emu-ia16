@@ -1,0 +1,12 @@
+
+all: boot
+
+clean:
+	rm -f boot
+
+install: boot
+	mkdir -p ${DESTDIR}
+	cp -f boot ${DESTDIR}/
+
+.asm:
+	nasm -fbin -o $@ $<
