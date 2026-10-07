@@ -1,4 +1,5 @@
 /emu/emu
+/boot/boot
 /bin/echo/echo
 /bin/cat/cat
 /bin/cc/cc
