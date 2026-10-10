@@ -1,0 +1,9 @@
+OBJS = start.o
+
+all: sys
+
+sys: sys.elf
+	ia16-elf-objcopy -O binary $< $@
+
+sys.elf: ${OBJS} sys.x
+	ia16-elf-gcc -o $@ -T sys.x ${OBJS:F} -nostdlib

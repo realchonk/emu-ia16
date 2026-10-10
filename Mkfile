@@ -1,4 +1,4 @@
-.SUBDIRS: emu lib bin boot
+.SUBDIRS: emu lib bin boot sys
 
 include config.mk
 
@@ -12,6 +12,14 @@ BINDIR ?= ${PREFIX}/bin
 LIBDIR ?= ${PREFIX}/lib
 INCDIR ?= ${PREFIX}/include
 .EXPORTS: PREFIX BINDIR LIBDIR INCDIR
+
+all: floppy1440.bin ${.SUBDIRS}
+
+qemu: floppy1440.bin
+	qemu-system-i386 -M pc -m 16M -fda $<
+
+floppy1440.bin: boot/boot sys/sys
+	cat boot/boot sys/sys /dev/zero | dd of=$@ bs=512 count=2880
 
 .asm.o:
 	${AS} -felf32 -o $@ $<

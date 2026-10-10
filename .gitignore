@@ -11,6 +11,7 @@
 /lib/c0/c0
 /lib/c1/c1
 /lib/c3/c3
+/sys/sys
 /_install
 **/*.o
 **/*.elf
@@ -21,3 +22,4 @@
 **/*.sym
 **/*.ssa
 **/*.tmp
+**/*.bin
