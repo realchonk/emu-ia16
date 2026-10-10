@@ -22,17 +22,18 @@
 extern struct insn	ins[];
 extern int		nins;
 extern word		nval;
-extern byte		vsz[];
 extern word		argpool[];
 extern int		nargpool;
 extern word		locsize[];
 extern int		nloc, nargs;
 
 static int	ivlo[MAXVAL], ivhi[MAXVAL];
-static byte	vclass[MAXVAL];
-static byte	vhome[MAXVAL];
-static byte	vreg[MAXVAL];
 static int	vslot[MAXVAL];
+static byte	vinfo[MAXVAL];	/* [2:0] reg, [3] homed, [4] CL_ADDR */
+
+#define VREG(v)		((vinfo[v]) & 7)
+#define VHOMED(v)	((vinfo[v]) & 8)
+#define VADDR(v)	((vinfo[v]) & 16)
 
 static int	framesize;
 static int	locsite[MAXLOC];
@@ -68,7 +69,7 @@ compute_intervals ()
 	for (v = 0; v < nval; ++v) {
 		ivlo[v] = 0x7fff;
 		ivhi[v] = -1;
-		vclass[v] = CL_VAL;
+		vinfo[v] = 0;
 	}
 
 	for (i = 0; i < nins; ++i) {
@@ -88,17 +89,17 @@ compute_intervals ()
 		case 'C':
 			touch (ins[i].v.C.dst, i, i);
 			touch (ins[i].v.C.a, 0, i);
-			vclass[ins[i].v.C.dst] = vclass[ins[i].v.C.a];
+			vinfo[ins[i].v.C.dst] = vinfo[ins[i].v.C.a] & 0x10;
 			break;
 		case '*':
 			touch (ins[i].v.m.dst, i, i);
 			touch (ins[i].v.m.a, 0, i);
-			vclass[ins[i].v.m.a] = CL_ADDR;
+			vinfo[ins[i].v.m.a] |= 16;
 			break;
 		case '=':
 			touch (ins[i].v.m.dst, 0, i);
 			touch (ins[i].v.m.a, 0, i);
-			vclass[ins[i].v.m.dst] = CL_ADDR;
+			vinfo[ins[i].v.m.dst] |= 16;
 			break;
 		case 'u':
 			touch (ins[i].v.u.dst, i, i);
@@ -108,25 +109,26 @@ compute_intervals ()
 			touch (ins[i].v.b.dst, i, i);
 			touch (ins[i].v.b.a, 0, i);
 			if (!(ins[i].v.b.fl & 8))
-				touch (ins[i].v.b.b, 0, i);
+				touch (ins[i].v.b.bi, 0, i);
 			break;
 		case 'R':
 			touch (ins[i].v.R.a, 0, i);
 			break;
 		case 'J':
-			for (k = 0; k < (int) ins[i].v.L.n; ++k)
-				touch (argpool[ins[i].v.L.argi + k], 0, i);
+			for (k = 0; k < (int) LN (ins[i].v.L.argn); ++k)
+				touch (argpool[LARGI (ins[i].v.L.argn) + k], 0, i);
 			break;
 		case 'B':
 			touch (ins[i].v.B.a, 0, i);
-			for (k = 0; k < (int) ins[i].v.B.n; ++k)
-				touch (argpool[ins[i].v.B.argi + k], 0, i);
-			for (k = 0; k < (int) ins[i].v.B.nfalse; ++k)
-				touch (argpool[ins[i].v.B.fargi + k], 0, i);
+			for (k = 0; k < (int) BN (ins[i].v.B.argn); ++k)
+				touch (argpool[BARGI (ins[i].v.B.argn) + k], 0, i);
+			for (k = 0; k < (int) BNF (ins[i].v.B.argn); ++k)
+				touch (argpool[BARGI (ins[i].v.B.argn)
+				    + BN (ins[i].v.B.argn) + k], 0, i);
 			break;
 		case 'L':
-			for (k = 0; k < (int) ins[i].v.L.n; ++k)
-				touch (argpool[ins[i].v.L.argi + k], i, 0x7fff);
+			for (k = 0; k < (int) LN (ins[i].v.L.argn); ++k)
+				touch (argpool[LARGI (ins[i].v.L.argn) + k], i, 0x7fff);
 			break;
 		}
 	}
@@ -152,7 +154,7 @@ allowed (v, r)
 word v;
 int r;
 {
-	if (vclass[v] == CL_ADDR && !addrreg[r])
+	if (VADDR (v) && !addrreg[r])
 		return 0;
 	return 1;
 }
@@ -160,33 +162,40 @@ int r;
 static void
 allocate ()
 {
-	int order[MAXVAL], norder;
-	int i, j, t, cand, victim, vend;
+	int i, j, t, cand, victim, vend, norder, bestlo;
 	word v;
 	int owner[NREG];
-	word active[MAXVAL];
+	word active[NREG];		/* an active value owns a register */
 	int nactive;
 
+	/* Values are visited by increasing ivlo (ties by id, like a stable
+	   insertion sort), marked with vinfo bit 5; there is no room for an
+	   order[] pool, and active[] never holds more than NREG values. */
 	norder = 0;
-	for (v = 0; v < nval; ++v)
+	for (v = 0; v < nval; ++v) {
+		vinfo[v] &= ~32;
 		if (ivhi[v] >= 0)
-			order[norder++] = v;
-	for (i = 1; i < norder; ++i) {
-		t = order[i];
-		for (j = i; j > 0 && ivlo[order[j-1]] > ivlo[t]; --j)
-			order[j] = order[j-1];
-		order[j] = t;
+			++norder;
 	}
 
 	for (i = 0; i < NREG; ++i)
 		owner[i] = -1;
 	nactive = 0;
 
-	for (i = 0; i < norder; ++i) {
-		v = order[i];
+	while (norder > 0) {
+		v = 0;
+		bestlo = 0x7fff;
+		for (j = 0; j < (int) nval; ++j)
+			if (!(vinfo[j] & 32) && ivhi[j] >= 0 && ivlo[j] < bestlo) {
+				bestlo = ivlo[j];
+				v = j;
+			}
+		vinfo[v] |= 32;
+		--norder;
+
 		for (j = 0; j < nactive; ) {
 			if (ivhi[active[j]] < ivlo[v]) {
-				owner[vreg[active[j]]] = -1;
+				owner[VREG (active[j])] = -1;
 				active[j] = active[--nactive];
 			} else
 				++j;
@@ -206,30 +215,31 @@ allocate ()
 			victim = -1;
 			vend = -1;
 			for (j = 0; j < nactive; ++j) {
-				int a = active[j];
-				if (!allowed (v, vreg[a]))
+				t = active[j];
+				if (!allowed (v, VREG (t)))
 					continue;
-				if (ivhi[a] > vend) {
-					vend = ivhi[a];
+				if (ivhi[t] > vend) {
+					vend = ivhi[t];
 					victim = j;
 				}
 			}
 			if (victim >= 0 && ivhi[active[victim]] > ivhi[v]) {
 				word av = active[victim];
-				vhome[av] = 1;
-				owner[vreg[av]] = -1;
+				vinfo[av] |= 8;
+				owner[VREG (av)] = -1;
 				active[victim] = active[--nactive];
-				cand = vreg[av];
+				cand = VREG (av);
 			} else {
-				vhome[v] = 1;
+				vinfo[v] |= 8;
 				continue;
 			}
 		}
 		if (cand < 0)
 			cand = R_AX;
-		vhome[v] = 0;
-		vreg[v] = cand;
+		vinfo[v] = (vinfo[v] & 0x30) | cand;
 		owner[cand] = v;
+		if (nactive >= NREG)
+			errx (1, "c3: allocator invariant broken");
 		active[nactive++] = v;
 	}
 
@@ -242,7 +252,7 @@ allocate ()
 	}
 	j = 0;
 	for (v = 0; v < nval; ++v)
-		if (vhome[v] == 1) {
+		if (VHOMED (v)) {
 			framesize += 2;
 			vslot[v] = -framesize;
 			++j;
@@ -268,7 +278,7 @@ int pc, r;
 	if (avoid[r])
 		return 1;
 	for (v = 0; v < nval; ++v)
-		if (vhome[v] == 0 && vreg[v] == r && live_at (v, pc))
+		if (!VHOMED (v) && VREG (v) == r && live_at (v, pc))
 			return 1;
 	return 0;
 }
@@ -300,11 +310,11 @@ int pc;
 {
 	int r;
 
-	if (vhome[v] == 0) {
-		sprintf (out, "%s", regname[vreg[v]]);
+	if (!VHOMED (v)) {
+		sprintf (out, "%s", regname[VREG (v)]);
 		return;
 	}
-	r = scratch (pc, vclass[v] == CL_ADDR);
+	r = scratch (pc, VADDR (v) != 0);
 	printf ("\tmov %s, [bp%+d]\n", regname[r], vslot[v]);
 	sprintf (out, "%s", regname[r]);
 }
@@ -317,13 +327,13 @@ int pc;
 {
 	int r;
 
-	if (vhome[v] == 0 && addrreg[vreg[v]]) {
-		sprintf (out, "[%s]", regname[vreg[v]]);
+	if (!VHOMED (v) && addrreg[VREG (v)]) {
+		sprintf (out, "[%s]", regname[VREG (v)]);
 		return;
 	}
 	r = scratch (pc, 1);
-	if (vhome[v] == 0)
-		printf ("\tmov %s, %s\n", regname[r], regname[vreg[v]]);
+	if (!VHOMED (v))
+		printf ("\tmov %s, %s\n", regname[r], regname[VREG (v)]);
 	else
 		printf ("\tmov %s, [bp%+d]\n", regname[r], vslot[v]);
 	sprintf (out, "[%s]", regname[r]);
@@ -336,9 +346,9 @@ int r;
 int pc;
 {
 	(void) pc;
-	if (vhome[v] == 0) {
-		if (vreg[v] != r)
-			printf ("\tmov %s, %s\n", regname[r], regname[vreg[v]]);
+	if (!VHOMED (v)) {
+		if (VREG (v) != r)
+			printf ("\tmov %s, %s\n", regname[r], regname[VREG (v)]);
 	} else
 		printf ("\tmov %s, [bp%+d]\n", regname[r], vslot[v]);
 }
@@ -350,10 +360,10 @@ int r;
 int pc;
 {
 	(void) pc;
-	if (vhome[v] == 1)
+	if (VHOMED (v))
 		printf ("\tmov [bp%+d], %s\n", vslot[v], regname[r]);
-	else if (vreg[v] != r)
-		printf ("\tmov %s, %s\n", regname[vreg[v]], regname[r]);
+	else if (VREG (v) != r)
+		printf ("\tmov %s, %s\n", regname[VREG (v)], regname[r]);
 }
 
 static struct insn *
@@ -382,19 +392,19 @@ int pc;
 	li = find_label (lab);
 	if (li == (struct insn *) 0)
 		return;
-	np = li->v.L.n;
+	np = LN (li->v.L.argn);
 	/* c0's merges pass at most one parameter on acyclic edges, so a
 	   straightforward sequential move is safe here. */
 	for (k = 0; k < np && k < nargc; ++k) {
 		src = argpool[argsbase + k];
-		dst = argpool[li->v.L.argi + k];
+		dst = argpool[LARGI (li->v.L.argn) + k];
 		if (src == dst)
 			continue;
 		readop (src, a, pc);
-		if (vhome[dst] == 1)
+		if (VHOMED (dst))
 			printf ("\tmov [bp%+d], %s\n", vslot[dst], a);
-		else if (strcmp (a, regname[vreg[dst]]) != 0)
-			printf ("\tmov %s, %s\n", regname[vreg[dst]], a);
+		else if (strcmp (a, regname[VREG (dst)]) != 0)
+			printf ("\tmov %s, %s\n", regname[VREG (dst)], a);
 	}
 }
 
@@ -445,33 +455,33 @@ int pc;
 
 	switch (in->op) {
 	case 'i':
-		if (vhome[in->v.i.dst] == 1)
+		if (VHOMED (in->v.i.dst))
 			printf ("\tmov word [bp%+d], %u\n", vslot[in->v.i.dst],
 				(unsigned) in->v.i.imm);
 		else
-			printf ("\tmov %s, %u\n", regname[vreg[in->v.i.dst]],
+			printf ("\tmov %s, %u\n", regname[VREG (in->v.i.dst)],
 				(unsigned) in->v.i.imm);
 		break;
 	case 'S':
-		if (vhome[in->v.S.dst] == 1)
+		if (VHOMED (in->v.S.dst))
 			printf ("\tmov word [bp%+d], strtab + %u\n",
 				vslot[in->v.S.dst], (unsigned) in->v.S.six);
 		else
 			printf ("\tmov %s, strtab + %u\n",
-				regname[vreg[in->v.S.dst]], (unsigned) in->v.S.six);
+				regname[VREG (in->v.S.dst)], (unsigned) in->v.S.six);
 		break;
 	case 'g':
-		if (vhome[in->v.g.dst] == 1)
+		if (VHOMED (in->v.g.dst))
 			printf ("\tmov word [bp%+d], %s\n",
 				vslot[in->v.g.dst], getsym (in->v.g.sym));
 		else
-			printf ("\tmov %s, %s\n", regname[vreg[in->v.g.dst]],
+			printf ("\tmov %s, %s\n", regname[VREG (in->v.g.dst)],
 				getsym (in->v.g.sym));
 		break;
 	case 'l':
-		if (vhome[in->v.l.dst] == 0) {
+		if (!VHOMED (in->v.l.dst)) {
 			printf ("\tlea %s, [bp%+d]\n",
-				regname[vreg[in->v.l.dst]], locsite[in->v.l.slot]);
+				regname[VREG (in->v.l.dst)], locsite[in->v.l.slot]);
 		} else {
 			t = scratch (pc, 1);
 			printf ("\tlea %s, [bp%+d]\n", regname[t],
@@ -487,7 +497,7 @@ int pc;
 	case '*':
 		memop (in->v.m.a, m, pc);
 		if (in->v.m.size == SZ_B) {
-			r = vhome[in->v.m.dst] == 0 ? vreg[in->v.m.dst]
+			r = !VHOMED (in->v.m.dst) ? VREG (in->v.m.dst)
 						    : scratch (pc, 0);
 			if (r == R_SI || r == R_DI) {
 				printf ("\tmov ax, 0\n");
@@ -496,15 +506,15 @@ int pc;
 			} else {
 				printf ("\tmov %s, 0\n", regname[r]);
 				printf ("\tmov %s, %s\n", bytename[r], m);
-				if (vhome[in->v.m.dst] == 1)
+				if (VHOMED (in->v.m.dst))
 					printf ("\tmov [bp%+d], %s\n",
 						vslot[in->v.m.dst], regname[r]);
 			}
 		} else {
-			r = vhome[in->v.m.dst] == 0 ? vreg[in->v.m.dst]
+			r = !VHOMED (in->v.m.dst) ? VREG (in->v.m.dst)
 						    : scratch (pc, 0);
 			printf ("\tmov %s, %s\n", regname[r], m);
-			if (vhome[in->v.m.dst] == 1)
+			if (VHOMED (in->v.m.dst))
 				printf ("\tmov [bp%+d], %s\n",
 					vslot[in->v.m.dst], regname[r]);
 		}
@@ -542,37 +552,37 @@ int pc;
 		if (r >= 0) {
 			readop (in->v.b.a, a, pc);
 			if (in->v.b.fl & 8)
-				sprintf (b, "%u", (unsigned) in->v.b.imm);
+				sprintf (b, "%u", (unsigned) in->v.b.bi);
 			else
-				readop (in->v.b.b, b, pc);
+				readop (in->v.b.bi, b, pc);
 			printf ("\tcmp %s, %s\n", a, b);
 			printf ("\t%s .Lset%u\n", jcc[r], (unsigned) pc);
-			if (vhome[in->v.b.dst] == 1)
+			if (VHOMED (in->v.b.dst))
 				printf ("\tmov word [bp%+d], 0\n",
 					vslot[in->v.b.dst]);
 			else
 				printf ("\tmov %s, 0\n",
-					regname[vreg[in->v.b.dst]]);
+					regname[VREG (in->v.b.dst)]);
 			printf ("\tjmp .Lendc%u\n", (unsigned) pc);
 			printf (".Lset%u:\n", (unsigned) pc);
-			if (vhome[in->v.b.dst] == 1)
+			if (VHOMED (in->v.b.dst))
 				printf ("\tmov word [bp%+d], 1\n",
 					vslot[in->v.b.dst]);
 			else
 				printf ("\tmov %s, 1\n",
-					regname[vreg[in->v.b.dst]]);
+					regname[VREG (in->v.b.dst)]);
 			printf (".Lendc%u:\n", (unsigned) pc);
 			break;
 		}
 		if (in->v.b.bop == '*') {
-			if (vhome[in->v.b.b] == 0 && vreg[in->v.b.b] != R_AX &&
-			    vreg[in->v.b.b] != R_DX) {
-				sprintf (b, "%s", regname[vreg[in->v.b.b]]);
+			if (!VHOMED (in->v.b.bi) && VREG (in->v.b.bi) != R_AX &&
+			    VREG (in->v.b.bi) != R_DX) {
+				sprintf (b, "%s", regname[VREG (in->v.b.bi)]);
 			} else {
 				t = scratch (pc, 0);
 				if (t == R_AX || t == R_DX)
 					t = R_BX;
-				readop (in->v.b.b, a, pc);
+				readop (in->v.b.bi, a, pc);
 				printf ("\tmov %s, %s\n", regname[t], a);
 				sprintf (b, "%s", regname[t]);
 			}
@@ -582,14 +592,14 @@ int pc;
 			break;
 		}
 		if (in->v.b.bop == '/' || in->v.b.bop == '%') {
-			if (vhome[in->v.b.b] == 0 && vreg[in->v.b.b] != R_AX &&
-			    vreg[in->v.b.b] != R_DX) {
-				sprintf (b, "%s", regname[vreg[in->v.b.b]]);
+			if (!VHOMED (in->v.b.bi) && VREG (in->v.b.bi) != R_AX &&
+			    VREG (in->v.b.bi) != R_DX) {
+				sprintf (b, "%s", regname[VREG (in->v.b.bi)]);
 			} else {
 				t = scratch (pc, 0);
 				if (t == R_AX || t == R_DX)
 					t = R_BX;
-				readop (in->v.b.b, a, pc);
+				readop (in->v.b.bi, a, pc);
 				printf ("\tmov %s, %s\n", regname[t], a);
 				sprintf (b, "%s", regname[t]);
 			}
@@ -603,7 +613,7 @@ int pc;
 		if (in->v.b.bop == 'l' || in->v.b.bop == 'r') {
 			toreg (in->v.b.a, R_AX, pc);
 			if (in->v.b.fl & 8) {
-				printf ("\tmov cl, %u\n", (unsigned) in->v.b.imm);
+				printf ("\tmov cl, %u\n", (unsigned) in->v.b.bi);
 			} else {
 				t = -1;
 				for (r = R_AX; r <= R_DX; ++r)
@@ -614,7 +624,7 @@ int pc;
 				if (t < 0)
 					t = R_BX;
 				avoid[t] = 1;
-				toreg (in->v.b.b, t, pc);
+				toreg (in->v.b.bi, t, pc);
 				printf ("\tmov cl, %s\n", bytename[t]);
 			}
 			printf ("\t%s ax, cl\n",
@@ -623,11 +633,11 @@ int pc;
 			break;
 		}
 		if (in->v.b.fl & 8)
-			sprintf (b, "%u", (unsigned) in->v.b.imm);
+			sprintf (b, "%u", (unsigned) in->v.b.bi);
 		else
-			readop (in->v.b.b, b, pc);
+			readop (in->v.b.bi, b, pc);
 		readop (in->v.b.a, a, pc);
-		if (vhome[in->v.b.dst] == 1) {
+		if (VHOMED (in->v.b.dst)) {
 			t = scratch (pc, 0);
 			printf ("\tmov %s, %s\n", regname[t], a);
 			printf ("\t%s %s, %s\n", bopname (in->v.b.bop),
@@ -635,9 +645,9 @@ int pc;
 			printf ("\tmov [bp%+d], %s\n", vslot[in->v.b.dst],
 				regname[t]);
 		} else {
-			toreg (in->v.b.a, vreg[in->v.b.dst], pc);
+			toreg (in->v.b.a, VREG (in->v.b.dst), pc);
 			printf ("\t%s %s, %s\n", bopname (in->v.b.bop),
-				regname[vreg[in->v.b.dst]], b);
+				regname[VREG (in->v.b.dst)], b);
 		}
 		break;
 	case 'c':
@@ -665,10 +675,10 @@ int pc;
 		}
 		break;
 	case 'R':
-		if (vhome[in->v.R.a] == 1)
+		if (VHOMED (in->v.R.a))
 			printf ("\tmov ax, [bp%+d]\n", vslot[in->v.R.a]);
-		else if (vreg[in->v.R.a] != R_AX)
-			printf ("\tmov ax, %s\n", regname[vreg[in->v.R.a]]);
+		else if (VREG (in->v.R.a) != R_AX)
+			printf ("\tmov ax, %s\n", regname[VREG (in->v.R.a)]);
 		printf ("\tjmp %s.Lepilogue\n", getsym (funcsym));
 		break;
 	case 'r':
@@ -678,17 +688,20 @@ int pc;
 		printf ("%s:\n", getsym (in->v.L.lab));
 		break;
 	case 'J':
-		edge (in->v.L.argi, in->v.L.n, in->v.L.lab, pc);
+		edge (LARGI (in->v.L.argn), LN (in->v.L.argn),
+		    in->v.L.lab, pc);
 		printf ("\tjmp %s\n", getsym (in->v.L.lab));
 		break;
 	case 'B':
 		readop (in->v.B.a, a, pc);
 		printf ("\ttest %s, %s\n", a, a);
 		printf ("\tjnz .Ltrue%u\n", (unsigned) pc);
-		edge (in->v.B.fargi, in->v.B.nfalse, in->v.B.lab2, pc);
+		edge (BARGI (in->v.B.argn) + BN (in->v.B.argn),
+		    BNF (in->v.B.argn), in->v.B.lab2, pc);
 		printf ("\tjmp %s\n", getsym (in->v.B.lab2));
 		printf (".Ltrue%u:\n", (unsigned) pc);
-		edge (in->v.B.argi, in->v.B.n, in->v.B.lab, pc);
+		edge (BARGI (in->v.B.argn), BN (in->v.B.argn),
+		    in->v.B.lab, pc);
 		printf ("\tjmp %s\n", getsym (in->v.B.lab));
 		break;
 	}

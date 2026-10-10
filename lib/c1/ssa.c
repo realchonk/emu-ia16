@@ -63,7 +63,7 @@ newval (sz)
 int sz;
 {
 	if (nval >= NVALUE)
-		errx (1, "ssa: too many values");
+		errx (1, "ssa: too many values (%d used)", nval);
 	vsz[nval] = sz;
 	return nval++;
 }

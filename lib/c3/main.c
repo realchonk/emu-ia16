@@ -103,7 +103,6 @@ word sym;
 struct insn	ins[MAXINS];
 int		nins;
 word		nval;			/* number of SSA values */
-byte		vsz[MAXVAL];		/* size code per value */
 word		argpool[ARGPOOL];
 int		nargpool;
 word		locsize[MAXLOC];	/* byte size of each local slot */
@@ -112,9 +111,17 @@ int		nargs;
 
 int		emit_func ();		/* emit.c */
 
+static void
+pool_args (n)
+int n;
+{
+	if (nargpool + n > ARGPOOL)
+		errx (1, "c3: too many pooled args");
+}
+
 /* Names of symbols defined in this translation unit, so an undefined `call`
    target or `g` address can be declared extern. */
-#define MAXDEF	256
+#define MAXDEF	128
 word		defs[MAXDEF];
 int		ndefs;
 
@@ -193,17 +200,20 @@ func ()
 		if (nloc < MAXLOC) {
 			locsize[nloc++] = w;
 			++nargs;
-		}
+		} else
+			errx (1, "c3: too many locals");
 	while ((w = getw ()) != 0xffff)		/* var sizes */
 		if (nloc < MAXLOC)
 			locsize[nloc++] = w;
+		else
+			errx (1, "c3: too many locals");
 
 	nins = 0;
 	nargpool = 0;
 	while (1) {
 		i = nins;
 		if (i >= MAXINS)
-			errx (1, "c3: too many instructions");
+			errx (1, "c3: too many instructions (%d used)", i);
 		ins[i].op = getb ();
 		if (ins[i].op == 0xff)
 			break;
@@ -216,7 +226,7 @@ func ()
 			else if (ins[i].v.i.size == SZ_W)
 				ins[i].v.i.imm = getw ();
 			else
-				ins[i].v.i.immd = getd ();
+				ins[i].v.i.imm = (word) getd ();
 			break;
 		case 'S':
 			ins[i].v.S.dst = getw ();
@@ -253,11 +263,10 @@ func ()
 			break;
 		case 'b':
 			ins[i].v.b.fl = getb ();
-			ins[i].v.b.size = ins[i].v.b.fl & 3;
 			ins[i].v.b.bop = getb ();
 			ins[i].v.b.dst = getw ();
 			ins[i].v.b.a = getw ();
-			ins[i].v.b.b = getw ();
+			ins[i].v.b.bi = getw ();
 			break;
 		case 'c':
 			ins[i].v.c.size = getb ();
@@ -265,7 +274,8 @@ func ()
 			ins[i].v.c.dst = getw ();
 			ins[i].v.c.a = getw ();	/* function address */
 			ins[i].v.c.argi = nargpool;
-			for (k = 0; k < ins[i].v.c.n; ++k) {
+			pool_args ((int) ins[i].v.c.n);
+			for (k = 0; k < (int) ins[i].v.c.n; ++k) {
 				(void) getb ();
 				argpool[nargpool++] = getw ();
 			}
@@ -276,32 +286,47 @@ func ()
 		case 'r':
 			break;
 		case 'L':
+		case 'J': {
+			word n, base;
+
 			ins[i].v.L.lab = getw ();
-			ins[i].v.L.n = getw ();
-			ins[i].v.L.argi = nargpool;
-			for (k = 0; k < (int) ins[i].v.L.n; ++k)
-				argpool[nargpool++] = getw ();
+			n = getw ();
+			if (n > 15)
+				errx (1, "c3: too many block args");
+			base = nargpool;
+			pool_args ((int) n);
+			ins[i].v.L.argn = (base << 4) | n;
+			nargpool += n;
+			for (k = 0; k < (int) n; ++k)
+				argpool[base + k] = getw ();
 			break;
-		case 'J':
-			ins[i].v.L.lab = getw ();
-			ins[i].v.L.n = getw ();
-			ins[i].v.L.argi = nargpool;
-			for (k = 0; k < (int) ins[i].v.L.n; ++k)
-				argpool[nargpool++] = getw ();
-			break;
-		case 'B':
+		}
+		case 'B': {
+			word n, nf, base;
+
 			ins[i].v.B.a = getw ();	/* cond */
 			ins[i].v.B.lab = getw ();
-			ins[i].v.B.n = getw ();
-			ins[i].v.B.argi = nargpool;
-			for (k = 0; k < (int) ins[i].v.B.n; ++k)
-				argpool[nargpool++] = getw ();
+			n = getw ();
+			if (n > 15)
+				errx (1, "c3: too many block args");
+			base = nargpool;
+			if (base > 511)
+				errx (1, "c3: too many pooled args");
+			pool_args ((int) n);
+			nargpool += n;
+			for (k = 0; k < (int) n; ++k)
+				argpool[base + k] = getw ();
 			ins[i].v.B.lab2 = getw ();
-			ins[i].v.B.nfalse = getw ();
-			ins[i].v.B.fargi = nargpool;
-			for (k = 0; k < (int) ins[i].v.B.nfalse; ++k)
-				argpool[nargpool++] = getw ();
+			nf = getw ();
+			if (nf > 7)
+				errx (1, "c3: too many block args");
+			pool_args ((int) nf);
+			nargpool += nf;
+			for (k = 0; k < (int) nf; ++k)
+				argpool[base + n + k] = getw ();
+			ins[i].v.B.argn = (base << 7) | (n << 3) | nf;
 			break;
+		}
 		default:
 			errx (1, "c3: bad stmt %c (%#x)", ins[i].op, ins[i].op);
 		}
@@ -312,7 +337,7 @@ func ()
 	while ((w = getw ()) != 0xffff) {
 		if (nval >= MAXVAL)
 			errx (1, "c3: too many values");
-		vsz[nval++] = (w >> 14) & 3;
+		++nval;
 	}
 	if (getb () != 0xff)
 		errx (1, "c3: malformed F");
@@ -344,8 +369,23 @@ parse ()
 /* ---- symbol discovery pre-pass ---------------------------------------- */
 /* Walk the SSA once (via lseek-rewind) recording defined symbols (D and
    defined F) and every `g` address, so externs can be declared. */
-static word	refs[512];
+static word	refs[256];
 static int	nrefs;
+
+static void
+addref (sym)
+word sym;
+{
+	int i;
+
+	for (i = 0; i < nrefs; ++i)
+		if (refs[i] == sym)
+			return;
+	if (nrefs < 256)
+		refs[nrefs++] = sym;
+	else
+		errx (1, "c3: too many symbol refs");
+}
 
 static void
 skip_strings ()
@@ -380,8 +420,7 @@ scan_code ()
 			word rsym;
 			(void) getw ();
 			rsym = getw ();
-			if (nrefs < 512)
-				refs[nrefs++] = rsym;
+			addref (rsym);
 			break;
 		}
 		case 'l': (void) getw (); (void) getb (); break;
@@ -448,8 +487,11 @@ scan ()
 			fl = getb ();
 			sym = getw ();
 			(void) getw ();	/* size */
-			if ((fl & 3) != SC_EXTERN && ndefs < MAXDEF)
+			if ((fl & 3) != SC_EXTERN) {
+				if (ndefs >= MAXDEF)
+					errx (1, "c3: too many definitions");
 				defs[ndefs++] = sym;
+			}
 			if (fl & 4) {
 				byte c;
 				while ((c = getb ()) != 0) {
@@ -466,14 +508,15 @@ scan ()
 		} else if (t == 'F') {
 			byte fl = getb ();
 			word sym = getw ();
+			if ((fl & 4) || (fl & 3) != SC_EXTERN) {
+				if (ndefs >= MAXDEF)
+					errx (1, "c3: too many definitions");
+				defs[ndefs++] = sym;
+			}
 			if (!(fl & 4)) {
 				(void) getb ();		/* 0xff */
-				if ((fl & 3) != SC_EXTERN && ndefs < MAXDEF)
-					defs[ndefs++] = sym;
 				continue;
 			}
-			if (ndefs < MAXDEF)
-				defs[ndefs++] = sym;
 			skip_strings ();		/* args */
 			skip_strings ();		/* vars */
 			scan_code ();
@@ -488,7 +531,7 @@ scan ()
 static void
 externs ()
 {
-	int i, j, k, isdef;
+	int i, j, isdef;
 
 	for (i = 0; i < nrefs; ++i) {
 		if (refs[i] & 0x8000)
@@ -497,12 +540,7 @@ externs ()
 		for (j = 0; j < ndefs; ++j)
 			if (defs[j] == refs[i])
 				isdef = 1;
-		if (isdef)
-			continue;
-		for (k = 0; k < i; ++k)
-			if (refs[k] == refs[i])
-				break;
-		if (k == i)
+		if (!isdef)
 			printf ("extern %s\n", getsym (refs[i]));
 	}
 }

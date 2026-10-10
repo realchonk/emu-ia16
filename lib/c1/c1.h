@@ -7,7 +7,7 @@
 #define NSPOOL	640	/* maximum number of stmts */
 #define NEPOOL	2304	/* maximum number of exprs */
 #define NLPOOL	64	/* maximum number of local variables */
-#define NVALUE	2304	/* maximum number of SSA values per function */
+#define NVALUE	2400	/* maximum number of SSA values per function */
 #define NBLK	256	/* maximum number of labelled blocks */
 #define MAXARGS	16	/* maximum number of arguments for function call */
 

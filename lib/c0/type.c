@@ -21,7 +21,7 @@ char *tag;
 	struct type *t;
 
 	if (ntpool >= NTYPE)
-		error ("too many types");
+		error ("too many types (%d used)", ntpool);
 	t = &tpool[ntpool++];
 	t->t_op = op;
 	t->t_tp = tp;

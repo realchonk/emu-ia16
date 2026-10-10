@@ -144,26 +144,40 @@ compiling this tree:
 
 | pass | pool | value | peak |
 |------|------|-------|------|
+| c0 | `NTYPE` type pool entries | 320 | ~280 (`lib/c3/emit.c`) |
 | c1 | `NSPOOL` stmts | 640 | 608 |
 | c1 | `NEPOOL` exprs | 2304 | 2169 |
-| c1 | `NVALUE` SSA values | 2304 | 2242 |
-| c3 | `MAXINS` insns | 1700 | 2568 |
-| c3 | `MAXVAL` values | 1200 | 2242 |
-| c3 | `ARGPOOL` edge/call args | 3072 | 342 |
-| c3 | `MAXLOC` slots | 48 | 15 |
+| c1 | `NVALUE` SSA values | 2400 | 2310 |
+| c3 | `MAXINS` insns | 2680 | 2636 |
+| c3 | `MAXVAL` values | 2400 | 2310 |
+| c3 | `ARGPOOL` edge/call args | 512 | 342 |
+| c3 | `MAXLOC` slots | 32 | 16 |
 
-Peaks measured compiling this tree's largest files (`lib/c3/emit.c`,
-`lib/cpp/cpp.c`, `bin/yacc/y2.c`). c3's `MAXINS`/`MAXVAL` are the current
-blockers: `lib/c3/emit.c` and `lib/cpp/cpp.c` fail with `too many instructions`,
-`bin/yacc/y2.c` with `too many values`. Raising them costs bss (one
-`struct insn` per `MAXINS` entry, one byte per `MAXVAL`), so it needs the same
-budget treatment as c1.
+With these limits **every compilable `.c` in the tree passes c1 and c3**
+(to re-measure peaks, build a small scratch scanner that walks a `.ssa`
+stream with c3's record layout and reports per-function maxima). c3 stays inside the segment by budget: `struct insn`
+is 10 bytes (`op` + 8-byte payload union; the L/J/B arg-list descriptors are
+bit-packed into one word, see `c3.h`), the per-value arrays are one `vinfo`
+byte (reg + homed + addr-class bits) plus `ivlo`/`ivhi`/`vslot` words, and
+`vsz[]` is not kept (sizes live in the insns). `allocate()` keeps no
+`order[]`/`active[]` pools sized by `MAXVAL`: `active[]` is `NREG` entries
+(an active value owns a register) and values are visited by minimum `ivlo`
+selection. Never reintroduce `MAXVAL`-sized stack arrays: the stack is
+2048 bytes at the top of the segment and such arrays silently grow down
+into `.bss` and corrupt pools.
+
+The remaining bootstrap blockers are not pool sizes: (1) self-compiled code
+is too large — `cc`-compiled `lib/c3/emit.c` alone is ~56K of text, so a
+self-built c3 does not fit the segment yet; (2) c0 emits plain tentative
+definitions (`T x;` at file scope) as `D` records with `SC_EXTERN`, so c3
+declares them `extern` and a multi-unit self-link is missing its definitions.
 
 ## Testing the compiler
 
 There is no unit-test harness. The practical check is to compile the tree's own
-`.c` files through the pipeline. The tree has ~81 `.c` files; as of the SSA
-rewrite **76 compile through c1** and **73 all the way to an object**. The
+`.c` files through the pipeline. The tree has ~81 `.c` files; as of the pool
+resize **76 compile through c1** and **76 all the way to an object** (the
+former `emit.c`/`cpp.c`/`y2.c` pool overflows are fixed). The
 known non-compiling set is environmental, not compiler bugs:
 
 - `bin/yacc/y1.c` — needs `-DPARSER="..."` (set by `bin/yacc/Mkfile`).

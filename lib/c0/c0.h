@@ -24,7 +24,7 @@ extern int	astfd, symfd, strfd;
 #define	NINT	448			/* interned names (string file offsets) */
 
 /* type.c */
-#define	NTYPE	272			/* type pool entries */
+#define	NTYPE	320			/* type pool entries */
 
 /* decl.c */
 #define	NSYMB	640			/* symbol pool entries */
