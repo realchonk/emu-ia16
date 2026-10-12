@@ -10,6 +10,7 @@ OBJS =	stdio/_printf.o		\
 	stdio/fdopen.o		\
 	stdio/fflush.o		\
 	stdio/fgetc.o		\
+	stdio/fgets.o		\
 	stdio/fopen.o		\
 	stdio/fprintf.o		\
 	stdio/fputc.o		\

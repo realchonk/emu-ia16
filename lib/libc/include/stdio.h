@@ -31,6 +31,7 @@ void	 setbuf ();
 int	 getc ();
 int	 getchar ();
 int	 fgetc ();
+char	*fgets ();
 int	 fputc ();
 int	 fputs ();
 int	 putc ();
