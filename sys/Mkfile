@@ -2,6 +2,9 @@ OBJS = start.o
 
 all: sys
 
+clean:
+	rm -f *.o *.elf sys
+
 sys: sys.elf
 	ia16-elf-objcopy -O binary $< $@
 

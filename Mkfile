@@ -15,6 +15,9 @@ INCDIR ?= ${PREFIX}/include
 
 all: floppy1440.bin ${.SUBDIRS}
 
+clean-extra:
+	rm -f floppy1440.bin
+
 qemu: floppy1440.bin
 	qemu-system-i386 -M pc -m 16M -fda $<
 

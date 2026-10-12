@@ -2,6 +2,7 @@
 		cc	\
 		echo	\
 		hello	\
+		newfs	\
 		yacc
 
 .expand dir

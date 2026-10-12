@@ -5,6 +5,8 @@
 /bin/cc/cc
 /bin/cc/*.asm
 /bin/hello/hello
+/bin/newfs/newfs
+/bin/newfs/fs.img
 /bin/yacc/yacc
 /bin/yacc/yacc.*
 /bin/yacc/y.tab.c
