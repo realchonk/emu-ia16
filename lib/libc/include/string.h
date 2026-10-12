@@ -20,6 +20,7 @@ int	 strcmp ();
 int	 strncmp ();
 size_t	 strlen ();
 size_t	 strnlen ();
+size_t	 strspn ();
 size_t	 strcspn ();
 
 char	*strerror ();

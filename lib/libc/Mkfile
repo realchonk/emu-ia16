@@ -63,6 +63,7 @@ OBJS =	stdio/_printf.o		\
 	string/strnlen.o	\
 	string/strrchr.o	\
 	string/strsep.o		\
+	string/strspn.o		\
 	unistd/_exit.o		\
 	unistd/brk.o		\
 	unistd/close.o		\
