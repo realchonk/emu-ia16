@@ -15,11 +15,11 @@ char	*strcat ();
 char	*strncat ();
 char	*strchr ();
 char	*strrchr ();
-char	*strcspn ();
 char	*strsep ();
 int	 strcmp ();
 size_t	 strlen ();
 size_t	 strnlen ();
+size_t	 strcspn ();
 
 char	*strerror ();
 
