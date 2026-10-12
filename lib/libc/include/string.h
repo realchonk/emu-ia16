@@ -15,6 +15,7 @@ char	*strcat ();
 char	*strncat ();
 char	*strchr ();
 char	*strrchr ();
+char	*strcspn ();
 int	 strcmp ();
 size_t	 strlen ();
 size_t	 strnlen ();
