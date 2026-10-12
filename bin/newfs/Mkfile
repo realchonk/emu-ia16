@@ -1,6 +1,6 @@
 NAME = newfs
 OBJS = newfs.o
 
-ARGS ?= -s 4096 fs.img
+ARGS ?= -vs 4096 fs.img
 
 .expand prog
