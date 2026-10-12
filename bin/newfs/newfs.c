@@ -255,5 +255,6 @@ char	**argv;
 		warnx ("fs_dfree = %d", fs.fs_dfree);
 	}
 
+	close (fd);
 	return 0;
 }
