@@ -1,0 +1,7 @@
+NAME = fsdb
+
+OBJS = fsdb.o
+
+ARGS = -f ../newfs/fs.img < /dev/tty
+
+.expand prog

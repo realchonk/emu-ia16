@@ -1,6 +1,7 @@
 .SUBDIRS:	cat	\
 		cc	\
 		echo	\
+		fsdb	\
 		hello	\
 		newfs	\
 		yacc
