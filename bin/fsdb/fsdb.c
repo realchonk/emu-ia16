@@ -312,22 +312,29 @@ long		*off;
 /* COMMANDS */
 
 #define DELIM " \t"
+static char *cmd;
+
+static char *
+anext ()
+{
+	char	*arg;
+
+	arg = strsep (&cmd, DELIM);
+	return arg != NULL && *arg != '\0' ? arg : NULL;
+}
 
 static int
-cmd_exit (cmd)
-char	**cmd;
+cmd_exit ()
 {
-	(void)cmd;
 	exit (0);
 }
 
 static int
-cmd_inode (cmd)
-char	**cmd;
+cmd_inode ()
 {
 	char	*inostr, prompt[32];
 
-	inostr = strsep (cmd, DELIM);
+	inostr = anext ();
 	if (inostr == NULL) 
 		return -1;
 
@@ -358,11 +365,9 @@ char	**cmd;
 }
 
 static int
-cmd_back (cmd)
-char	**cmd;
+cmd_back ()
 {
 	int t;
-	(void)cmd;
 
 	t	= ino;
 	ino	= lino;
@@ -372,13 +377,10 @@ char	**cmd;
 }
 
 static int
-cmd_print (cmd)
-char	**cmd;
+cmd_print ()
 {
 	struct inode	in;
 	int		i;
-
-	(void)cmd;
 
 	rinode (ino, &in);
 
@@ -396,15 +398,14 @@ char	**cmd;
 }
 
 static int
-cmd_chmod (cmd)
-char	**cmd;
+cmd_chmod ()
 {
 	struct inode	 in;
 	char		*modestr, *endp;
 	int		 mode;
 
-	modestr = strsep (cmd, DELIM);
-	if (modestr == NULL || *modestr == '\0')
+	modestr = anext ();
+	if (modestr == NULL)
 		return -1;
 
 	mode = strtoi (modestr, &endp, 8);
@@ -421,15 +422,14 @@ char	**cmd;
 }
 
 static int
-cmd_chtype (cmd)
-char	**cmd;
+cmd_chtype ()
 {
 	struct inode	 in;
 	char		*typestr;
 	int		 type;
 
-	typestr = strsep (cmd, DELIM);
-	if (typestr == NULL || *typestr == '\0')
+	typestr = anext ();
+	if (typestr == NULL)
 		return -1;
 
 	if (strcmp (typestr, "dir") == 0) {
@@ -449,15 +449,14 @@ char	**cmd;
 }
 
 static int
-cmd_chown (cmd)
-char	**cmd;
+cmd_chown ()
 {
 	struct inode	 in;
 	char		*uidstr;
 	int		 uid;
 
-	uidstr = strsep (cmd, DELIM);
-	if (uidstr == NULL || *uidstr == '\0')
+	uidstr = anext ();
+	if (uidstr == NULL)
 		return -1;
 
 	uid = atoi (uidstr);
@@ -470,15 +469,14 @@ char	**cmd;
 }
 
 static int
-cmd_chgrp (cmd)
-char	**cmd;
+cmd_chgrp ()
 {
 	struct inode	 in;
 	char		*gidstr;
 	int		 gid;
 
-	gidstr = strsep (cmd, DELIM);
-	if (gidstr == NULL || *gidstr == '\0')
+	gidstr = anext ();
+	if (gidstr == NULL)
 		return -1;
 
 	gid = atoi (gidstr);
@@ -491,12 +489,9 @@ char	**cmd;
 }
 
 static int
-cmd_uplink (cmd)
-char	**cmd;
+cmd_uplink ()
 {
 	struct inode	in;
-
-	(void)cmd;
 
 	rinode (ino, &in);
 	++in.i_nlink;
@@ -506,12 +501,9 @@ char	**cmd;
 }
 
 static int
-cmd_downlink (cmd)
-char	**cmd;
+cmd_downlink ()
 {
 	struct inode	in;
-
-	(void)cmd;
 
 	rinode (ino, &in);
 	--in.i_nlink;
@@ -521,15 +513,12 @@ char	**cmd;
 }
 
 static int
-cmd_ls (cmd)
-char	**cmd;
+cmd_ls ()
 {
 	struct inode	 in;
 	struct dirent	*ent;
 	long		 i, o, sz;
 	int		 b, bno;
-
-	(void)cmd;
 
 	rinode (ino, &in);
 
@@ -562,8 +551,7 @@ char	**cmd;
 }
 
 static int
-cmd_ln (cmd)
-char	**cmd;
+cmd_ln ()
 {
 	struct inode	 in;
 	struct dirent	*ent;
@@ -571,12 +559,12 @@ char	**cmd;
 	int		 b, nino;
 	char		*name, *inostr;
 
-	inostr = strsep (cmd, DELIM);
-	if (inostr == NULL || *inostr == '\0')
+	inostr = anext ();
+	if (inostr == NULL)
 		return -1;
 
-	name = strsep (cmd, DELIM);
-	if (name == NULL || *name == '\0')
+	name = anext ();
+	if (name == NULL)
 		return -1;
 
 	nino = atoi (inostr);
@@ -612,8 +600,7 @@ char	**cmd;
 }
 
 static int
-cmd_rm (cmd)
-char	**cmd;
+cmd_rm ()
 {
 	struct inode	 in;
 	struct dirent	*ent;
@@ -621,8 +608,8 @@ char	**cmd;
 	int		 b;
 	char		*name;
 
-	name = strsep (cmd, DELIM);
-	if (name == NULL || *name == '\0')
+	name = anext ();
+	if (name == NULL)
 		return -1;
 
 	rinode (ino, &in);
@@ -649,14 +636,13 @@ char	**cmd;
 }
 
 static int
-cmd_clri (cmd)
-char	**cmd;
+cmd_clri ()
 {
 	struct inode	 in;
 	char		*inostr;
 	int		 i;
 
-	inostr = strsep (cmd, DELIM);
+	inostr = anext ();
 	if (inostr == NULL) 
 		return -1;
 
@@ -674,11 +660,8 @@ char	**cmd;
 }
 
 static int
-cmd_df (cmd)
-char	**cmd;
+cmd_df ()
 {
-	(void)cmd;
-
 	printf ("inodes:      %d/%d free\n", fs.fs_ifree, fs.fs_isize);
 	printf ("data blocks: %d/%d free\n", fs.fs_dfree, fs.fs_dsize);
 
@@ -686,15 +669,14 @@ char	**cmd;
 }
 
 static int
-cmd_cd (cmd)
-char	**cmd;
+cmd_cd ()
 {
 	struct inode	 in;
 	char		*path, *name;
 	int		 nino;
 
-	path = strsep (cmd, DELIM);
-	if (path == NULL || *path == '\0')
+	path = anext ();
+	if (path == NULL)
 		return -1;
 
 	for (; *path == '/'; ++path)
@@ -758,20 +740,19 @@ static struct cmd {
 };
 
 static void
-run (cmd)
-char	*cmd;
+run ()
 {
 	struct cmd	*c;
 	char		*name;
 
-	name = strsep (&cmd, DELIM);
+	name = anext ();
 
-	if (*name == '\0')
+	if (name == NULL)
 		return;
 
 	for (c = cmds; c->name != NULL; ++c) {
 		if (strcmp (name, c->name) == 0) {
-			if (c->f (&cmd) != 0) {
+			if (c->f () != 0) {
 				fprintf (stderr, "usage: %s%s\n", c->name, c->usage);
 			}
 			return;
@@ -795,7 +776,7 @@ main (argc, argv)
 int	  argc;
 char	**argv;
 {
-	char	*path = NULL, cmd[80];
+	char	*path = NULL, cmdbuf[80];
 	int	 option, rflag = 0;
 
 	while ((option = getopt (argc, argv, "f:rv")) != -1) {
@@ -830,14 +811,14 @@ char	**argv;
 
 	while (1) {
 		fprintf (stderr, "fsdb (ino %d)> ", ino);
-		if (fgets (cmd, sizeof (cmd), stdin) == NULL) {
+		if (fgets (cmdbuf, sizeof (cmdbuf), stdin) == NULL) {
 			fputc ('\n', stderr);
 			break;
 		}
 
-		cmd[strcspn (cmd, "\n")] = '\0';
-
-		run (cmd);
+		cmdbuf[strcspn (cmdbuf, "\n")] = '\0';
+		cmd = cmdbuf;
+		run ();
 	}
 
 
