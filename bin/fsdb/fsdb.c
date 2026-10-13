@@ -685,6 +685,43 @@ char	**cmd;
 	return 0;
 }
 
+static int
+cmd_cd (cmd)
+char	**cmd;
+{
+	struct inode	 in;
+	char		*path, *name;
+	int		 nino;
+
+	path = strsep (cmd, DELIM);
+	if (path == NULL || *path == '\0')
+		return -1;
+
+	for (; *path == '/'; ++path)
+		ino = 1;
+
+	while ((name = strsep (&path, "/")) != NULL) {
+		if (*name == '\0')
+			continue;
+
+		rinode (ino, &in);
+		if ((in.i_mode & 0170000) != 040000) {
+			warnx ("%d: not a directory", ino);
+			return 0;
+		}
+
+		nino = ilookup (&in, name, NULL);
+		if (nino == 0) {
+			warnx ("%d: no such file: %s", ino, name);
+			return 0;
+		}
+
+		ino = nino;
+	}
+
+	return 0;
+}
+
 static struct cmd {
 	const char	*name;
 	int		(*f)();
@@ -716,6 +753,7 @@ static struct cmd {
 	{ "rm",		cmd_rm,		" name" },
 	{ "clri",	cmd_clri,	" ino" },
 	{ "df",		cmd_df,		"" },
+	{ "cd",		cmd_cd,		" path" },
 	{ NULL,		NULL,		NULL },
 };
 
