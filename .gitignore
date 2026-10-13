@@ -4,6 +4,7 @@
 /bin/cat/cat
 /bin/cc/cc
 /bin/cc/*.asm
+/bin/fsdb/fsdb
 /bin/hello/hello
 /bin/newfs/newfs
 /bin/newfs/fs.img
