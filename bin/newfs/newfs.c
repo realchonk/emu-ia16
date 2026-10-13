@@ -203,9 +203,6 @@ char	**argv;
 	o		+= nis;
 	fs.fs_doff	= o;
 	fs.fs_dsize	= size;
-	memset (buf, 0, 512);
-	memcpy (buf, &fs, sizeof (fs));
-	swrite (128, buf);
 
 	/* clear out inode bitmaps */
 	for (i = 0; i < nib; ++i)
@@ -214,6 +211,10 @@ char	**argv;
 	/* clear out data block bitmaps */
 	for (i = 0; i < ndb; ++i)
 		sfill (i + fs.fs_dboff, 0xff);
+
+	/* clear out inodes */
+	for (i = 0; i < nis; ++i)
+		sfill (i + fs.fs_ioff, 0x00);
 
 	fs.fs_ifree	= fs.fs_isize;
 	fs.fs_dfree	= fs.fs_dsize;
@@ -229,7 +230,7 @@ char	**argv;
 	tmp.d_cino	= 1;
 	strncpy (tmp.d_cname, ".", 14);
 	tmp.d_pino	= 1;
-	strncpy (tmp.d_cname, "..", 14);
+	strncpy (tmp.d_pname, "..", 14);
 	memcpy (buf, &tmp, sizeof (tmp));
 	wdata (bno);
 	--fs.fs_dfree;
@@ -254,6 +255,10 @@ char	**argv;
 		warnx ("fs_ifree = %d", fs.fs_ifree);
 		warnx ("fs_dfree = %d", fs.fs_dfree);
 	}
+
+	memset (buf, 0, 512);
+	memcpy (buf, &fs, sizeof (fs));
+	swrite (128, buf);
 
 	close (fd);
 	return 0;
