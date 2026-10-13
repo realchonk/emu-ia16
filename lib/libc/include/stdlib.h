@@ -15,6 +15,7 @@ void	 free ();
 void	 freeall ();
 
 int	 atoi ();
+int	 strtoi ();
 
 const char *getprogname ();
 
