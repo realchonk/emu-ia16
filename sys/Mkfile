@@ -1,4 +1,4 @@
-OBJS = start.o
+OBJS = start.o main.o
 
 all: sys
 
@@ -10,3 +10,8 @@ sys: sys.elf
 
 sys.elf: ${OBJS} sys.x
 	ia16-elf-gcc -o $@ -T sys.x ${OBJS:F} -nostdlib
+
+main.o: user.bin
+
+user.bin: user.asm
+	nasm -fbin -o $@ $<
