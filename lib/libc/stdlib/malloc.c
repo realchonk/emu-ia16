@@ -1,56 +1,44 @@
 #include <stdbool.h>
 #include <stdlib.h>
+#include <sys/queue.h>
 #include <unistd.h>
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 struct map {
 	size_t		 len;
-	struct map	*next, *prev;
+	TAILQ_ENTRY (map) link;
 };
 
+TAILQ_HEAD (map_head, map);
+
+static struct map_head free_list = TAILQ_HEAD_INITIALIZER (free_list);
+
 #define map_end(m) ((void *)((char *)(m) + (m)->len))
-
-static struct map *free_list = NULL;
-
-static struct map *
-find_free (num, last)
-struct map	**last;
-size_t		  num;
-{
-	struct map *m;
-
-	*last = NULL;
-	for (m = free_list; m != NULL; *last = m, m = m->next) {
-		if (m->len >= num)
-			return m;
-	}
-
-	return NULL;
-}
 
 void *
 malloc (num)
 size_t num;
 {
-	struct map	*m, *n, *l;
+	struct map	*m, *n, *l = NULL;
 	void		*ptr;
 	size_t		 anum;
 
 	anum = MAX (num + sizeof (size_t), sizeof (struct map));
 
 	/* try finding an already free block */
-	m = find_free (anum, &l);
+	TAILQ_FOREACH (m, &free_list, link) {
+		if (m->len >= anum)
+			break;
+		l = m;
+	}
+
 	if (m == NULL) {
 		/* if the free last block is at the brk, just extend it */
 		if (l != NULL && map_end (l) == sbrk (0)) {
 			if (sbrk (anum - l->len) == (void *)-1)
 				return NULL;
-			/* l is the last block, so unlink it from the tail */
-			if (l->prev != NULL)
-				l->prev->next = NULL;
-			else
-				free_list = NULL;
+			TAILQ_REMOVE (&free_list, l, link);
 			l->len = anum;
 			return (char *)l + sizeof (size_t);
 		}
@@ -67,26 +55,16 @@ size_t num;
 	 * If the block found is big enough to also hold a free block,
 	 * split it and let the remainder n take m's place in the free
 	 * list.  Otherwise hand out all of m and drop it from the list.
-	 * n is what m's predecessor has to point to afterwards.
 	 */
 	if (m->len >= anum + sizeof (struct map)) {
 		n = (struct map *)((char *)m + anum);
 		n->len = m->len - anum;
-		n->prev = m->prev;
-		n->next = m->next;
-		if (n->next != NULL)
-			n->next->prev = n;
+		TAILQ_INSERT_AFTER (&free_list, m, n, link);
+		TAILQ_REMOVE (&free_list, m, link);
 	} else {
 		anum = m->len;
-		n = m->next;
-		if (n != NULL)
-			n->prev = m->prev;
+		TAILQ_REMOVE (&free_list, m, link);
 	}
-
-	if (m->prev != NULL)
-		m->prev->next = n;
-	else
-		free_list = n;
 
 	m->len = anum;
 	return (char *)m + sizeof (size_t);
@@ -96,13 +74,11 @@ static bool
 try_merge (p, n)
 struct map *p, *n;
 {
-	if (map_end (p) != n)
+	if (p == NULL || n == NULL || map_end (p) != n)
 		return false;
 
 	p->len += n->len;
-	p->next = n->next;
-	if (p->next != NULL)
-		p->next->prev = p;
+	TAILQ_REMOVE (&free_list, n, link);
 	return true;
 }
 
@@ -111,45 +87,22 @@ free (ptr)
 void *ptr;
 {
 	struct map	*m, *i, *p = NULL;
-	size_t		 len;
 
 	m = (struct map *)((char *)ptr - sizeof (size_t));
-	len = m->len;
-
-	m->next = NULL;
-	m->prev = NULL;
-	m->len = len;
 
 	/* try finding a place to insert into the free list */
-	for (i = free_list; i != NULL && m > i; p = i, i = i->next);
+	for (i = TAILQ_FIRST (&free_list); i != NULL && m > i; p = i, i = TAILQ_NEXT (i, link));
 
-	if (i == NULL) {
-		if (p == NULL) {
-			free_list = m;
-			return;
-		}
-		p->next = m;
-		m->prev = p;
-		try_merge (p, m);
-		return;
-	}
+	if (p == NULL)
+		TAILQ_INSERT_HEAD (&free_list, m, link);
+	else
+		TAILQ_INSERT_AFTER (&free_list, p, m, link);
 
-	m->prev = p;
-	m->next = i;
-	i->prev = m;
-	if (p == NULL) {
-		free_list = m;
-		try_merge (m, i);
-		return;
-	}
-
-	p->next = m;
 	if (try_merge (p, m)) {
 		try_merge (p, i);
 	} else {
 		try_merge (m, i);
 	}
-	
 }
 
 /* free all heap memory in one go */
@@ -158,5 +111,5 @@ freeall ()
 {
 	extern char __brk[];
 	brk (__brk);
-	free_list = NULL;
+	TAILQ_INIT (&free_list);
 }
