@@ -27,7 +27,7 @@ files=''
 nfiles=0
 verbose=false
 nstack=2048
-cflags="-Og -ansi -ffreestanding -masm=intel -march=i286 -mcmodel=tiny -mprotected-mode -Wall -Wextra -isystem $root/lib/libc/include"
+cflags="-Og -std=gnu89 -ffreestanding -masm=intel -march=i286 -mcmodel=tiny -mprotected-mode -Wall -Wextra -isystem $root/lib/libc/include"
 ldflags="-nostdlib -L$root/lib/libc -lc -lgcc -Wl,--no-warn-rwx-segments"
 _output=''
 
