@@ -59,8 +59,11 @@ Documentation clarifications:
 		used in the body of a '#define' statement to continue
 		the definition onto the next line.  The escaped linefeed is
 		not included in the macro body.
-	Comments are uniformly removed (except if the argument -C is specified).
-		They are also ignored, except that a comment terminates a token.
+	Comments ("/* ... */" and "// ...") are uniformly removed (except if the
+		argument -C is specified).  A "//" comment extends to the end of
+		the line, or to the next line if the newline is escaped with a
+		backslash.  Comments are also ignored, except that a comment
+		terminates a token.
 		Thus "foo/* la di da */bar" may expand 'foo' and 'bar' but
 		will never expand 'foobar'.  If neither 'foo' nor 'bar' is a
 		macro then the output is "foobar", even if 'foobar'

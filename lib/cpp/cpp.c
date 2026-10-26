@@ -423,6 +423,7 @@ register char *p;
 	static int state = BEG;
 	register int c, i;
 	char quoc;
+	int esc;
 
 	if (state != BEG)
 		goto prevlf;
@@ -557,6 +558,45 @@ endcom:
 					if (!passcom) {
 						outp = inp = p;
 						popif ();
+						goto again;
+					}
+					break;
+				}
+				if (p[-1] == '/') { /* C++ comment */
+					esc = 0;
+					if (!passcom) {
+						inp = p - 2;
+						dump ();
+						outp = inp = p;
+					}
+
+					for (;;) {
+						while (*p != '\n') {
+							if (eob (p)) {
+								inp = p;
+								if (passcom)
+									dump ();
+								else
+									outp = p;
+								p = refill (p);
+							} else {
+								esc = (*p == '\\');
+								++p;
+							}
+						}
+
+						if (!esc) /* line continuation */
+							break;
+
+						++p;
+						esc = 0;
+						++lineno[ifno];
+						if (!passcom)
+							putc ('\n', fout);
+					}
+
+					if (!passcom) {
+						outp = inp = p;
 						goto again;
 					}
 					break;
