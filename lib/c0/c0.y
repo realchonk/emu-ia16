@@ -35,6 +35,7 @@
 %token CASE 268
 %token DEFAULT 269
 %token CONST 270
+%token FAR 271
 
 %token SCLASS 280
 %token TYPEKW 281
@@ -109,6 +110,7 @@ specs	: spec
 spec	: SCLASS				{ sc_sclass ($1); }
 	| TYPEKW				{ sc_type ($1); }
 	| CONST					{ sc_const (); }
+	| FAR					{ sc_far (); }
 	| TYPENAME				{ sc_td ((struct symb *) $1); }
 	| su_spec				{ sc_su ((struct type *) $1); }
 	;
@@ -232,6 +234,7 @@ tn_specs: tn_spec				{ $$ = $1; }
 
 tn_spec	: TYPEKW				{ $$ = (int) tn_bt ($1); }
 	| CONST					{ $$ = (int) tn_bt (BT_CONST); }
+	| FAR					{ $$ = (int) tn_far (); }
 	| TYPENAME				{ $$ = (int) tn_td ((struct symb *) $1); }
 	| su_spec				{ $$ = (int) tn_su ((struct type *) $1); }
 	;

@@ -160,17 +160,33 @@ main (argc, argv)
 int	  argc;
 char	**argv;
 {
-	if (argc != 4) {
-		mini (2, "usage: c0 ast str sym\n", 0, 0);
+	int	  i;
+
+	i = 1;
+	if (i < argc && strncmp (argv[i], "-mcmodel=", 9) == 0) {
+		if (strcmp (argv[i] + 9, "large") == 0)
+			farall = 1;
+		else if (strcmp (argv[i] + 9, "small") == 0)
+			farall = 0;
+		else {
+			mini (2, "c0: unknown code model: %s\n",
+			      (int) (argv[i] + 9), 0);
+			return 1;
+		}
+		++i;
+	}
+	if (argc - i != 3) {
+		mini (2, "usage: c0 [-mcmodel=small|large] ast str sym\n",
+		      0, 0);
 		return 1;
 	}
-	astfd = open (argv[1], O_WRONLY | O_CREAT | O_TRUNC, 0644);
-	strfd = open (argv[2], O_RDWR | O_CREAT | O_TRUNC, 0644);
-	symfd = open (argv[3], O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	astfd = open (argv[i], O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	strfd = open (argv[i + 1], O_RDWR | O_CREAT | O_TRUNC, 0644);
+	symfd = open (argv[i + 2], O_WRONLY | O_CREAT | O_TRUNC, 0644);
 	if (astfd < 0 || strfd < 0 || symfd < 0) {
 		mini (2, "cannot open %s\n",
-		      (int) (astfd < 0 ? argv[1]
-			    : strfd < 0 ? argv[2] : argv[3]), 0);
+		      (int) (astfd < 0 ? argv[i]
+			    : strfd < 0 ? argv[i + 1] : argv[i + 2]), 0);
 		return 1;
 	}
 

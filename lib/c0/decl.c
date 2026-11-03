@@ -167,6 +167,7 @@ int name;
 static struct {
 	int		 sc;
 	int		 bt;
+	int		 far;
 	struct type	*tp;
 } curd;
 
@@ -180,6 +181,7 @@ dcl_reset ()
 {
 	curd.sc = 0;
 	curd.bt = 0;
+	curd.far = 0;
 	curd.tp = NULL;
 	nslots = 0;		/* declarators and exprs share slots */
 	ndspool = 0;
@@ -189,6 +191,12 @@ void
 sc_const ()
 {
 	curd.bt |= BT_CONST;
+}
+
+void
+sc_far ()
+{
+	curd.far = 1;
 }
 
 void
@@ -243,6 +251,12 @@ curd_sc ()
 	return curd.sc;
 }
 
+int
+curd_far ()
+{
+	return curd.far;
+}
+
 /* ---------------- struct and union declarations ---------------- */
 
 static struct {
@@ -261,6 +275,7 @@ static int nsu;
  */
 static struct {
 	int		 sc, bt;
+	int		 far;
 	struct type	*tp;
 } curdsave[NSU];
 
@@ -315,6 +330,7 @@ int tag;
 		error ("structs nested too deeply");
 	curdsave[nsu].sc = curd.sc;
 	curdsave[nsu].bt = curd.bt;
+	curdsave[nsu].far = curd.far;
 	curdsave[nsu].tp = curd.tp;
 	dcl_reset ();
 	sustack[nsu].su = tp;
@@ -338,6 +354,7 @@ su_end ()
 	tp->t_size = sustack[nsu].size;
 	curd.sc = curdsave[nsu].sc;
 	curd.bt = curdsave[nsu].bt;
+	curd.far = curdsave[nsu].far;
 	curd.tp = curdsave[nsu].tp;
 	return tp;
 }
@@ -358,7 +375,7 @@ void
 member (d)
 struct dcl *d;
 {
-	struct type *tp = dcltype (curbase (), d);
+	struct type *tp = dcltype (curbase (), d, curd.far);
 	struct symb *m, **tail;
 	int name = dclname (d);
 	int sz, align;
@@ -525,9 +542,10 @@ int name;
  * `int (*f)()` yields pointer-to-function.
  */
 struct type *
-dcltype (t, d)
+dcltype (t, d, far)
 struct type *t;
 struct dcl *d;
+int far;
 {
 	int ok, n;
 	long v;
@@ -535,11 +553,19 @@ struct dcl *d;
 	while (d != NULL) {
 		switch (d->d_op) {
 		case D_NAME:
+			if (far)
+				typerr ("__far needs a pointer");
 			return t;
 		case D_PTR:
-			t = ptrtype (t);
+			if (far) {
+				t = farptrtype (t);
+				far = 0;
+			} else
+				t = ptrtype (t);
 			break;
 		case D_ARY:
+			if (far)
+				typerr ("__far needs a pointer");
 			n = 0;
 			if (d->d_u.d_size != NULL) {
 				v = fold (d->d_u.d_size, &ok);
@@ -555,6 +581,8 @@ struct dcl *d;
 			t = mktype (T_ARY, t, n, NULL, NULL);
 			break;
 		case D_FUNC:
+			if (far)
+				typerr ("__far needs a pointer");
 			t = mktype (T_FUNC, t, 0, d->d_u.d_params, NULL);
 			break;
 		default:
@@ -562,6 +590,8 @@ struct dcl *d;
 		}
 		d = d->d_l;
 	}
+	if (far)
+		typerr ("__far needs a pointer");
 	return t;
 }
 
@@ -593,6 +623,7 @@ int bt;
 	struct dspec *p = mkdspec ();
 
 	p->p_bt = bt;
+	p->p_far = 0;
 	p->p_tp = NULL;
 	return p;
 }
@@ -604,6 +635,7 @@ struct symb *sp;
 	struct dspec *p = mkdspec ();
 
 	p->p_bt = 0;
+	p->p_far = 0;
 	p->p_tp = sp->s_tp;
 	return p;
 }
@@ -615,6 +647,7 @@ struct type *tp;
 	struct dspec *p = mkdspec ();
 
 	p->p_bt = 0;
+	p->p_far = 0;
 	p->p_tp = tp;
 	return p;
 }
@@ -628,7 +661,19 @@ struct dspec *a, *b;
 	if (a->p_tp == NULL)
 		a->p_tp = b->p_tp;
 	a->p_bt |= b->p_bt;
+	a->p_far |= b->p_far;
 	return a;
+}
+
+struct dspec *
+tn_far ()
+{
+	struct dspec *p = mkdspec ();
+
+	p->p_bt = 0;
+	p->p_far = 1;
+	p->p_tp = NULL;
+	return p;
 }
 
 struct type *
@@ -642,7 +687,7 @@ struct dcl *abs;
 		base = sp->p_tp;
 	else
 		base = btype (fixbt (sp->p_bt));
-	return dcltype (base, abs);
+	return dcltype (base, abs, sp->p_far);
 }
 
 /* ---------------- declarations ---------------- */
@@ -651,7 +696,7 @@ void
 bindparam (d)
 struct dcl *d;
 {
-	struct type *tp = dcltype (curbase (), d);
+	struct type *tp = dcltype (curbase (), d, curd.far);
 	int name = dclname (d);
 	struct symb *p;
 
@@ -678,7 +723,7 @@ dclinst (d, init)
 struct dcl *d;
 struct node *init;
 {
-	struct type *tp = dcltype (curbase (), d);
+	struct type *tp = dcltype (curbase (), d, curd.far);
 	struct symb *sp, *old;
 	int name = dclname (d);
 	int sc;

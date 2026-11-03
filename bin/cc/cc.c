@@ -15,6 +15,10 @@
 # define LIBDIR PREFIX	"/lib"
 #endif
 
+#ifndef BINDIR
+# define BINDIR PREFIX	"/bin"
+#endif
+
 #ifndef INCDIR
 # define INCDIR PREFIX	"/include"
 #endif
@@ -31,11 +35,20 @@
 # define C1		LIBDIR "/c1"
 #endif
 
+#ifndef C2
+# define C2		LIBDIR "/c2"
+#endif
+
 #ifndef C3
 # define C3		LIBDIR "/c3"
 #endif
 
+#ifndef AS
+# define AS		BINDIR "/as"
+#endif
+
 static bool keeptemps = false;
+static const char *cmodel = NULL;	/* NULL means -mcmodel=small */
 
 static char *
 ssuffix (name, sufx)
@@ -89,17 +102,21 @@ char *input, *output;
 }
 
 static int
-runc0 (input, astfile, strfile, symfile)
+runc0 (input, astfile, strfile, symfile, model)
 char *input, *astfile, *strfile, *symfile;
+const char *model;
 {
-	char	*argv[5];
-	int	 ws;
+	char	*argv[6];
+	int	 n, ws;
 
-	argv[0] = C0;
-	argv[1] = astfile;
-	argv[2] = strfile;
-	argv[3] = symfile;
-	argv[4] = NULL;
+	n = 0;
+	argv[n++] = C0;
+	if (model != NULL)
+		argv[n++] = (char *) model;
+	argv[n++] = astfile;
+	argv[n++] = strfile;
+	argv[n++] = symfile;
+	argv[n] = NULL;
 
 	switch (fork ()) {
 	case -1:
@@ -158,6 +175,39 @@ char *astfile, *irfile, *tmpfile;
 }
 
 static int
+runc2 (ssafile, optfile)
+char *ssafile, *optfile;
+{
+	char	*argv[2];
+	int	 ws;
+
+	argv[0] = C2;
+	argv[1] = NULL;
+
+	switch (fork ()) {
+	case -1:
+		err (1, "c2: fork()");
+	case 0:
+		close (0);
+		if (open (ssafile, O_RDONLY) != 0)
+			err (1, "c2: open('%s')", ssafile);
+		close (1);
+		if (open (optfile, O_WRONLY | O_CREAT | O_TRUNC, 0644) != 1)
+			err (1, "c2: open('%s')", optfile);
+		execv (C2, argv);
+		err (1, "c2: execv('%s')", C2);
+	default:
+		if (wait (&ws) == -1)
+			err (1, "c2: wait()");
+		if (!WIFEXITED (ws) || WEXITSTATUS (ws) != 0) {
+			warnx ("c2");
+			return 1;
+		}
+		return 0;
+	}
+}
+
+static int
 runc3 (ssafile, asfile, strfile, symfile)
 char *ssafile, *asfile, *strfile, *symfile;
 {
@@ -193,10 +243,42 @@ char *ssafile, *asfile, *strfile, *symfile;
 }
 
 static int
+runas (asfile, objfile)
+char *asfile, *objfile;
+{
+	char	*argv[7];
+	int	 ws;
+
+	argv[0] = AS;
+	argv[1] = "-felf32";
+	argv[2] = "-mcpu=80286";
+	argv[3] = "-o";
+	argv[4] = objfile;
+	argv[5] = asfile;
+	argv[6] = NULL;
+
+	switch (fork ()) {
+	case -1:
+		err (1, "as: fork()");
+	case 0:
+		execv (AS, argv);
+		err (1, "as: execv('%s')", AS);
+	default:
+		if (wait (&ws) == -1)
+			err (1, "as: wait()");
+		if (!WIFEXITED (ws) || WEXITSTATUS (ws) != 0) {
+			warnx ("as");
+			return 1;
+		}
+		return 0;
+	}
+}
+
+static int
 compile (arg)
 char **arg;
 {
-	char	*i, *ast, *str, *sym, *tmp, *ssa, *as;
+	char	*i, *ast, *str, *sym, *tmp, *ssa, *opt, *as, *obj;
 	int	 ret = -1;
 
 	i	= ssuffix (*arg, "i");
@@ -205,20 +287,28 @@ char **arg;
 	sym	= ssuffix (*arg, "sym");
 	tmp	= ssuffix (*arg, "tmp");
 	ssa	= ssuffix (*arg, "ssa");
+	opt	= ssuffix (*arg, "opt");
 	as	= ssuffix (*arg, "asm");
+	obj	= ssuffix (*arg, "o");
 
 	printf ("%s:\n", *arg);
 
 	if (runcpp (*arg, i) != 0)
 		goto fail;
 
-	if (runc0 (i, ast, str, sym) != 0)
+	if (runc0 (i, ast, str, sym, cmodel) != 0)
 		goto fail;
 
 	if (runc1 (ast, ssa, tmp) != 0)
 		goto fail;
 
-	if (runc3 (ssa, as, str, sym) != 0)
+	if (runc2 (ssa, opt) != 0)
+		goto fail;
+
+	if (runc3 (opt, as, str, sym) != 0)
+		goto fail;
+
+	if (runas (as, obj) != 0)
 		goto fail;
 
 	ret = 0;
@@ -226,20 +316,21 @@ char **arg;
 fail:
 	if (!keeptemps) {
 		unlink (i);
-		unlink (ast);
 		unlink (sym);
 		unlink (str);
 		unlink (ast);
 		unlink (tmp);
+		unlink (opt);
 		unlink (as);
 	}
 	free (i);
-	free (ast);
 	free (sym);
 	free (str);
 	free (ast);
 	free (tmp);
+	free (opt);
 	free (as);
+	free (obj);
 	return ret;
 }
 
@@ -251,14 +342,24 @@ char	**argv;
 	int	 i;
 
 	/* parse options cc understands */
-	for (i = 1; i < argc; ++i) {
+	for (i = 1; i < argc; ) {
 		if (strcmp (argv[i], "-k") == 0) {
 			keeptemps = true;
+		} else if (strncmp (argv[i], "-mcmodel=", 9) == 0) {
+			if (strcmp (argv[i] + 9, "large") == 0)
+				cmodel = "-mcmodel=large";
+			else if (strcmp (argv[i] + 9, "small") == 0)
+				cmodel = NULL;
+			else
+				errx (1, "unknown code model: %s",
+				      argv[i] + 9);
 		} else {
+			++i;
 			continue;
 		}
 
-		memmove (argv, argv + 1, sizeof (char *) * (argc - i));
+		memmove (argv + i, argv + i + 1,
+			 sizeof (char *) * (argc - i));
 		--argc;
 	}
 

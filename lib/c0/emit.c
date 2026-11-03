@@ -29,7 +29,8 @@ static int	 nstatic;
 /* ltab/nlocidx/nargsloc come from decl.c/stmt.c */
 
 void		emexpr ();
-static void	emaddr (), embin (), emit_init ();
+static void	emaddr (), embin (), emit_init (), emconv (), emaddrval ();
+static int	isfaraddr (), symisstack (), addrseg ();
 
 /* ---------------- output helpers ---------------- */
 
@@ -163,6 +164,8 @@ int size;
 			  || t->t_op == T_FUNC
 			  || (t->t_op < 0x100 && (t->t_op & BT_UNSIGNED))))
 		ty |= 0x04;
+	if (t != NULL && (t->t_op & T_FAR))
+		ty |= 0x08;
 	wbyte (ty);
 	if ((ty & 3) == 3)
 		wword (size);
@@ -172,6 +175,12 @@ static void
 wtyaddr ()
 {
 	wbyte (0x05);			/* word, unsigned */
+}
+
+static void
+wtyaddrfar ()
+{
+	wbyte (0x0e);			/* dword, unsigned, far */
 }
 
 static void
@@ -433,6 +442,12 @@ struct node *e;
 		return;
 	default:
 		if (constaddr (e, &name, &off, &isstr)) {
+			if (tysize (tp) > 2) {
+				/* a segment cannot be known at link time */
+				typerr ("far pointer init not const");
+				izbytes (tysize (tp));
+				return;
+			}
 			if (isstr)
 				istrreloc (name, off);
 			else
@@ -567,7 +582,7 @@ int sz;
 		return;
 	}
 	if (e->n_op == O_CON) {
-		wconst (e->n_val * sz, e->n_tp);
+		wconst ((long) e->n_val * sz, btype (BT_INT));
 		return;
 	}
 	wbyte ('b');
@@ -588,6 +603,18 @@ struct node *l, *r;
 
 	lt = decay (l->n_tp);
 	rt = decay (r->n_tp);
+
+	if ((op == O_EQ || op == O_NE || op == O_LE || op == O_GE
+	     || op == '<' || op == '>')
+	    && (isfarptr (lt) || isfarptr (rt))) {
+		/* compare the full offset:segment pair */
+		wbyte ('b');
+		wty (btype (BT_INT | BT_LONG | BT_UNSIGNED), 4);
+		wbyte (opbyte (op));
+		emexpr (l, NULL);
+		emexpr (r, NULL);
+		return;
+	}
 
 	if (op == '-' && isptr (lt) && isptr (rt)) {
 		/* pointer difference: (l - r) / element size */
@@ -622,6 +649,62 @@ struct node *l, *r;
 	}
 }
 
+/* whether the address of an lvalue is a far (offset:segment) pointer */
+static int
+isfaraddr (e)
+struct node *e;
+{
+	struct type *lt, *rt;
+
+	switch (e->n_op) {
+	case O_NAME:
+		return 0;
+	case '*':
+		return isfarptr (decay (e->n_l->n_tp));
+	case O_INDEX:
+		lt = decay (e->n_l->n_tp);
+		rt = decay (e->n_r->n_tp);
+		if (isptr (lt))
+			return isfarptr (lt);
+		return isfarptr (rt);
+	case O_MEMBER:
+		return isfaraddr (e->n_l);
+	case O_ARROW:
+		return isfarptr (decay (e->n_l->n_tp));
+	default:
+		return 0;
+	}
+}
+
+/* whether a symbol lives in the current stack frame */
+static int
+symisstack (sp)
+struct symb *sp;
+{
+	int i;
+
+	for (i = 0; i < nlocidx; ++i)
+		if (ltab[i] == sp)
+			return 1;
+	return 0;
+}
+
+/* segment of a near address expression */
+static int
+addrseg (e)
+struct node *e;
+{
+	switch (e->n_op) {
+	case O_NAME:
+		return symisstack ((struct symb *) e->n_l) ? 'S' : 'D';
+	case O_MEMBER:
+	case O_INDEX:
+		return addrseg (e->n_l);
+	default:
+		return 'D';
+	}
+}
+
 /* the address of an lvalue */
 static void
 emaddr (e)
@@ -629,8 +712,9 @@ struct node *e;
 {
 	struct symb *m;
 	struct type *lt, *rt;
-	int sz;
+	int sz, far;
 
+	far = isfaraddr (e);
 	switch (e->n_op) {
 	case O_NAME:
 		emsymref ((struct symb *) e->n_l);
@@ -644,14 +728,20 @@ struct node *e;
 		if (isptr (lt)) {
 			sz = tysize (lt->t_tp);
 			wbyte ('b');
-			wtyaddr ();
+			if (far)
+				wtyaddrfar ();
+			else
+				wtyaddr ();
 			wbyte ('+');
 			emexpr (e->n_l, NULL);
 			emscaled (e->n_r, sz);
 		} else {
 			sz = tysize (rt->t_tp);
 			wbyte ('b');
-			wtyaddr ();
+			if (far)
+				wtyaddrfar ();
+			else
+				wtyaddr ();
 			wbyte ('+');
 			emexpr (e->n_r, NULL);
 			emscaled (e->n_l, sz);
@@ -661,7 +751,10 @@ struct node *e;
 	case O_ARROW:
 		m = (struct symb *) e->n_r;
 		wbyte ('b');
-		wtyaddr ();
+		if (far)
+			wtyaddrfar ();
+		else
+			wtyaddr ();
 		wbyte ('+');
 		if (e->n_op == O_MEMBER)
 			emaddr (e->n_l);
@@ -674,6 +767,49 @@ struct node *e;
 		emexpr (e, NULL);
 		return;
 	}
+}
+
+/* the address of an lvalue as a pointer value (far in -mcmodel=large) */
+static void
+emaddrval (e)
+struct node *e;
+{
+	int seg;
+
+	if (!farall || isfaraddr (e)) {
+		emaddr (e);
+		return;
+	}
+	seg = addrseg (e);
+	wbyte (seg == 'S' ? 'q' : 'p');
+	wtyaddrfar ();
+	emaddr (e);
+}
+
+/*
+ * Emit e converted to target.  Width conversions are left to c1, but a
+ * near pointer assigned to a far pointer needs the data segment in the
+ * high word, which the new 'p' node supplies.
+ */
+static void
+emconv (e, target)
+struct node *e;
+struct type *target;
+{
+	struct type *st;
+
+	if (e == NULL) {
+		wconst ((long) 0, btype (BT_INT));
+		return;
+	}
+	st = decay (e->n_tp);
+	if (!farall && isfarptr (target) && isptr (st) && !isfarptr (st)) {
+		wbyte ('p');
+		wty (target, 4);
+		emexpr (e, NULL);
+		return;
+	}
+	emexpr (e, NULL);
 }
 
 /*
@@ -691,7 +827,7 @@ struct type *oty;
 	int sz, ispre;
 
 	if (e == NULL) {
-		wconst (0, btype (BT_INT));
+		wconst ((long) 0, btype (BT_INT));
 		return;
 	}
 	ty = oty != NULL ? oty : e->n_tp;
@@ -703,12 +839,24 @@ struct type *oty;
 					   : (long) e->n_val, ty);
 		return;
 	case O_STR:
+		if (farall) {
+			wbyte ('p');		/* string lives in DS */
+			wtyaddrfar ();
+		}
 		wbyte ('S');
 		wword (e->n_val);
 		return;
 	case O_NAME:
 		sp = (struct symb *) e->n_l;
-		if (sp->s_tp->t_op == T_ARY || sp->s_tp->t_op == T_FUNC) {
+		if (sp->s_tp->t_op == T_ARY) {
+			if (farall) {
+				wbyte (symisstack (sp) ? 'q' : 'p');
+				wtyaddrfar ();
+			}
+			emsymref (sp);		/* decays to its address */
+			return;
+		}
+		if (sp->s_tp->t_op == T_FUNC) {
 			emsymref (sp);		/* decays to its address */
 			return;
 		}
@@ -717,14 +865,42 @@ struct type *oty;
 		emsymref (sp);
 		return;
 	case O_CAST:
+		if (!farall && isfarptr (e->n_tp)) {
+			struct type *st = decay (e->n_l == NULL ? NULL
+							 : e->n_l->n_tp);
+			if (isptr (st) && !isfarptr (st)) {
+				/* near pointer -> far pointer: add the
+				   data segment selector */
+				wbyte ('p');
+				wty (e->n_tp, 4);
+				emexpr (e->n_l, NULL);
+				return;
+			}
+		}
 		emexpr (e->n_l, e->n_tp);
 		return;
 	case O_ADDR:
-		emaddr (e->n_l);
+		if (e->n_l == NULL) {
+			wconst ((long) 0, btype (BT_INT));
+			return;
+		}
+		if (farall && (e->n_tp == NULL
+		    || e->n_tp->t_op == T_FUNC
+		    || e->n_tp->t_tp == NULL
+		    || e->n_tp->t_tp->t_op != T_FUNC))
+			emaddrval (e->n_l);
+		else
+			emaddr (e->n_l);
 		return;
 	case '*':
 		if (e->n_r != NULL) {
 			embin ('*', ty, e->n_l, e->n_r);
+			return;
+		}
+		if (isfaraddr (e)) {
+			wbyte ('f');
+			wty (ty, tysize (e->n_tp));
+			emexpr (e->n_l, NULL);
 			return;
 		}
 		wbyte ('*');
@@ -734,11 +910,27 @@ struct type *oty;
 	case O_INDEX:
 	case O_MEMBER:
 	case O_ARROW:
+		if (isfaraddr (e)) {
+			wbyte ('f');
+			wty (ty, tysize (e->n_tp));
+			emaddr (e);
+			return;
+		}
 		wbyte ('*');
 		wty (ty, tysize (e->n_tp));
 		emaddr (e);		/* the plain address, then deref */
 		return;
 	case '!':
+		if (isfarptr (decay (e->n_l->n_tp))) {
+			/* !p is a full offset:segment comparison */
+			wbyte ('b');
+			wty (btype (BT_INT | BT_LONG | BT_UNSIGNED), 4);
+			wbyte ('E');
+			emexpr (e->n_l, NULL);
+			wconst ((long) 0, btype (BT_INT));
+			return;
+		}
+		/* FALLTHROUGH */
 	case '~':
 		wbyte ('u');
 		wty (ty, tysize (e->n_tp));
@@ -766,7 +958,10 @@ struct type *oty;
 	case O_POSTDEC:
 		ispre = e->n_op == O_PREINC || e->n_op == O_PREDEC;
 		sz = isptr (decay (e->n_tp)) ? tysize (e->n_tp->t_tp) : 1;
-		wbyte ('n');
+		if (isfaraddr (e->n_l))
+			wbyte ('N');
+		else
+			wbyte ('n');
 		wty (e->n_tp, tysize (e->n_tp));
 		wbyte (e->n_op == O_PREINC || e->n_op == O_POSTINC
 			 ? '+' : '-');
@@ -775,10 +970,17 @@ struct type *oty;
 		emaddr (e->n_l);
 		return;
 	case '=':
+		if (isfaraddr (e->n_l)) {
+			wbyte ('s');
+			wty (ty, tysize (e->n_tp));
+			emaddr (e->n_l);
+			emconv (e->n_r, e->n_tp);
+			return;
+		}
 		wbyte ('=');
 		wty (ty, tysize (e->n_tp));
 		emaddr (e->n_l);
-		emexpr (e->n_r, NULL);
+		emconv (e->n_r, e->n_tp);
 		return;
 	case O_ADDA:
 	case O_SUBA:
@@ -791,6 +993,13 @@ struct type *oty;
 	case O_LSA:
 	case O_RSA:
 		/* dest = dest op src, with the value of dest reloaded */
+		if (isfaraddr (e->n_l)) {
+			wbyte ('s');
+			wty (ty, tysize (e->n_tp));
+			emaddr (e->n_l);
+			embin (baseop (e->n_op), e->n_tp, e->n_l, e->n_r);
+			return;
+		}
 		wbyte ('=');
 		wty (ty, tysize (e->n_tp));
 		emaddr (e->n_l);
@@ -922,7 +1131,7 @@ struct node *e;
 	}
 	wbyte ('R');
 	wty (rt, tysize (rt));
-	emexpr (e, NULL);
+	emconv (e, rt);
 }
 
 void

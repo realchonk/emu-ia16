@@ -1,4 +1,9 @@
 NAME = c3
 OBJS = main.o emit.o
 
+# c3 carries the big allocator pools: optimize for size and use a modest
+# stack so it still links inside the 64 KiB guest segment.
+CFLAGS += -Os
+LDFLAGS += -mstack=1024
+
 .expand prog

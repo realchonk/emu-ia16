@@ -1,0 +1,27 @@
+NAME = as
+OBJS = as.o
+
+CFLAGS += -Wall -Wextra
+
+# Assemble the test program, link it, and run it.
+check: ${RDEPS} as
+	${EMU} ./as -felf32 -mcpu=80286 -o test.o test.asm
+	$./xcc -o test test.o
+	${EMU} ./test
+
+# Compile the assembler with bin/cc's passes (cpp/c0/c1/c3).  This checks
+# that the C source stays inside the compiler's K&R subset.  The resulting
+# object now fits the guest segment; whether the self-built binary works is
+# a code-generator question, not an assembler-size one.
+selfcheck: ${RDEPS}
+	${EMU} ../../lib/cpp/cpp -I../../lib/libc/include as.c as.i
+	${EMU} ../../lib/c0/c0 as.ast as.str as.sym < as.i
+	${EMU} ../../lib/c1/c1 as.tmp < as.ast > as.ssa
+	${EMU} ../../lib/c2/c2 < as.ssa > as.opt
+	${EMU} ../../lib/c3/c3 as.str as.sym < as.opt > as.asm
+	@echo "bin/cc compiled as.c through c3"
+
+clean-extra:
+	rm -f *.o *.i *.ast *.str *.sym *.ssa *.opt *.tmp as.asm elf.asm test test.o test.elf
+
+.expand prog

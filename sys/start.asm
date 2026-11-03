@@ -2,7 +2,7 @@
 [cpu 286]
 
 section .boot
-extern main, __bss_begin, __bss_end, __bss_size
+extern main, __bss_begin, __bss_end, __bss_size, stacks
 global _start
 _start:
 	mov ax, 0xb800
@@ -38,7 +38,7 @@ _start:
 _pm:
 	lidt [idtr]
 
-	lea sp, [stack]
+	lea sp, [stacks + 512]
 	call main
 
 
@@ -94,6 +94,57 @@ putldt:
 	mov word [bx + 6], 0	; reserved for 386+
 
 	mov sp, bp
+	pop bp
+	ret
+
+; Save the current context in *osp and return 0.
+; The saved context has the same layout as the one made by swtch(),
+; so a process created by save() can later be resumed with swtch().
+; The saved ax slot is what swtch() will pop into ax on resume; newproc()
+; patches it to 1 for the child.
+;
+; int save (void **osp);
+global save
+save:
+	push bp
+	mov bp, sp
+	push si
+	push di
+	push ax			; saved ax (resume value)
+
+	mov bx, word [bp + 4]
+	mov word [bx], sp
+
+	pop ax
+	pop di
+	pop si
+	pop bp
+	xor ax, ax
+	ret
+
+; void swtch (void **osp, void *sp);
+;
+; Context layout (low to high address):
+;   [sp + 0] ax   <- popped into ax, so a copied context can return a value
+;   [sp + 2] di
+;   [sp + 4] si
+;   [sp + 6] bp
+;   [sp + 8] return address
+global swtch
+swtch:
+	push bp
+	mov bp, sp
+	push si
+	push di
+	push ax
+
+	mov bx, word [bp + 4]
+	mov word [bx], sp
+	mov sp, word [bp + 6]
+
+	pop ax
+	pop di
+	pop si
 	pop bp
 	ret
 
@@ -190,12 +241,9 @@ tss:
 .end:
 
 section .bss
-global stack
 idt:
 	resq 256
 .end:
-	resb 256
-stack:
 
 section .data
 gdt:

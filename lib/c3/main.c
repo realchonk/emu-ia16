@@ -105,6 +105,7 @@ int		nins;
 word		nval;			/* number of SSA values */
 word		argpool[ARGPOOL];
 int		nargpool;
+byte		vdw[(MAXVAL + 7) / 8];
 word		locsize[MAXLOC];	/* byte size of each local slot */
 int		nloc;
 int		nargs;
@@ -210,6 +211,7 @@ func ()
 
 	nins = 0;
 	nargpool = 0;
+	memset (vdw, 0, sizeof vdw);
 	while (1) {
 		i = nins;
 		if (i >= MAXINS)
@@ -221,12 +223,16 @@ func ()
 		case 'i':
 			ins[i].v.i.size = getb ();
 			ins[i].v.i.dst = getw ();
+			ins[i].v.i.immhi = 0;
 			if (ins[i].v.i.size == SZ_B)
 				ins[i].v.i.imm = getb ();
 			else if (ins[i].v.i.size == SZ_W)
 				ins[i].v.i.imm = getw ();
-			else
-				ins[i].v.i.imm = (word) getd ();
+			else {
+				dword d = getd ();
+				ins[i].v.i.imm = (word) d;
+				ins[i].v.i.immhi = (word) (d >> 16);
+			}
 			break;
 		case 'S':
 			ins[i].v.S.dst = getw ();
@@ -255,6 +261,21 @@ func ()
 			ins[i].v.m.dst = getw ();	/* address */
 			ins[i].v.m.a = getw ();	/* value */
 			break;
+		case 'p':
+		case 'q':
+			ins[i].v.g.dst = getw ();
+			ins[i].v.g.sym = getw ();	/* near address value */
+			break;
+		case 'f':
+			ins[i].v.m.size = getb ();
+			ins[i].v.m.dst = getw ();
+			ins[i].v.m.a = getw ();	/* far address value */
+			break;
+		case 's':
+			ins[i].v.m.size = getb ();
+			ins[i].v.m.dst = getw ();	/* far address value */
+			ins[i].v.m.a = getw ();	/* value */
+			break;
 		case 'u':
 			ins[i].v.u.size = getb ();
 			ins[i].v.u.bop = getb ();	/* op char */
@@ -276,8 +297,10 @@ func ()
 			ins[i].v.c.argi = nargpool;
 			pool_args ((int) ins[i].v.c.n);
 			for (k = 0; k < (int) ins[i].v.c.n; ++k) {
-				(void) getb ();
-				argpool[nargpool++] = getw ();
+				byte asz = getb ();
+				word av = getw ();
+				argpool[nargpool++] = av
+				    | (asz == SZ_D ? 0x8000 : 0);
 			}
 			break;
 		case 'R':
@@ -337,6 +360,8 @@ func ()
 	while ((w = getw ()) != 0xffff) {
 		if (nval >= MAXVAL)
 			errx (1, "c3: too many values");
+		if (((w >> 14) & 3) == SZ_D)
+			vdw[nval >> 3] |= 1 << (nval & 7);
 		++nval;
 	}
 	if (getb () != 0xff)
@@ -427,6 +452,10 @@ scan_code ()
 		case 'C': (void) getb (); (void) getw (); (void) getw (); break;
 		case '*': case '=':
 			(void) getb (); (void) getw (); (void) getw (); break;
+		case 'p': (void) getw (); (void) getw (); break;
+		case 'q': (void) getw (); (void) getw (); break;
+		case 'f': (void) getb (); (void) getw (); (void) getw (); break;
+		case 's': (void) getb (); (void) getw (); (void) getw (); break;
 		case 'u':
 			(void) getb (); (void) getb (); (void) getw ();
 			(void) getw (); break;

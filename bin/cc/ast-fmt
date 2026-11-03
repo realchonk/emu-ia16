@@ -28,6 +28,7 @@ ty: byte
 	signedness of every operand:
 	[1:0]	width: 0 = 1 byte, 1 = word, 2 = dword, 3 = block
 	[2]	0 = signed, 1 = unsigned (pointers are unsigned words)
+	[3]	the value is a far (offset:segment) pointer
 	If the width is block, a word with the byte count follows the
 	ty byte.  Blocks only appear as the type of "=" and "*".
 	Whenever an operand is narrower than its operation, c1 extends
@@ -42,6 +43,21 @@ bare `g`/`l`.  Pointer arithmetic has already been scaled to bytes by
 c0.  c1 must not evaluate the right side of &&, || and ?: eagerly
 (the tags below carry these operators; c1 generates the short
 circuit).
+
+A `__far` data pointer is a dword holding the offset in the low word
+and the segment selector in the high word.  Near pointers stay words.
+`sizeof` of a far pointer is 4.  Dereferencing and arithmetic go
+through the special `f`, `s`, `N` and `p` forms below; a near pointer
+converted to a far pointer gets a selector in its high word.
+
+c0 has two code models.  `-mcmodel=small` is the default: object
+pointers are near words unless declared `__far`.  `-mcmodel=large`
+makes every object pointer a far pointer; `p` takes the high word from
+DS, while `q` takes it from SS, so stack addresses can be represented
+correctly when DS and SS have different bases.  The large model is
+intended for freestanding kernel code; libc, crt0 and the userspace ABI
+still assume the small model.  Function pointers remain near until far
+function pointers are supported.
 
 ## Global Definitions
 
@@ -125,6 +141,16 @@ Comma:			"," ty expr expr
 	evaluate left, then right; value is the right one
 Dereference:		"*" ty expr
 	the value at the address; ty is the pointee (or a block)
+Far dereference:	"f" ty expr
+	load through a far address expr (a dword)
+Far assignment:		"s" ty addr src
+	store src through the far address addr
+Far inc/dec:		"N" ty op when scale lval
+	like "n", but lval is a far address expression
+Near-to-far:		"p" ty expr
+	build a far pointer from a near address expr using DS
+Stack-to-far:		"q" ty expr
+	build a far pointer from a near stack address using SS
 Address of, casts, member access ".", "->", index "[]" and sizeof
 	do not appear: c0 lowers them into the forms above ("&x" is
 	just the address expression of x, casts retype a node and
@@ -185,7 +211,105 @@ Cast:			"C" flags dst src
 Call:			"c" size nargs dst func (ty arg){nargs}
 Store:			"=" size dst src	(dst is an address; [dst] = src)
 Load:			"*" size dst src	(dst = [src])
+Far store:		"s" size addr src	([addr] = src, addr is a dword)
+Far load:		"f" size dst addr	(dst = [addr], addr is a dword)
+Near-to-far:		"p" dst src		(dst = src:DS)
+Stack-to-far:		"q" dst src		(dst = src:SS)
 Unary:			"u" size op dst src
 Binary:			"b" flags op dst a b
 	flags: byte; [1:0] size, [2] signed, [3] b is an immediate
 	(nargs, nparams, tn, fn are words, not bytes)
+
+Dword values are always homed in a four-byte frame slot (low word
+first); this keeps far pointers out of the 16-bit register allocator.
+
+# *.mdi
+Magic: "CIR\002"
+
+Machine-dependent IR emitted by c3 and consumed by c4.  It keeps the same
+tagged, little-endian stream style as *.ast and *.ssa, but its records name
+physical registers, bp-relative slots, concrete instruction forms and
+relocation operands rather than SSA values.  c4 does the final peephole
+passes, branch relaxation, instruction encoding and ELF writing.
+
+## Misc Stuff
+reg: byte
+	Physical register: 0=ax, 1=bx, 2=cx, 3=dx, 4=si, 5=di.
+	Byte-register instructions use the same low-register numbering
+	(0=al, 1=bl, 2=cl, 3=dl).
+size: byte
+	0=byte, 1=word, 2=dword
+sym: word
+	As in *.ast / *.ssa: offset into the symbol file; high bit set
+	means a generated label.
+
+## Global Definitions
+
+Data Declaration: "D" flags sym size init? "\x00"
+	Identical to *.ast / *.ssa.  c4 writes the sections.
+
+String table: "T" word n byte[n]
+	The contents of the ".str" file, emitted as the read-only symbol
+	`strtab`.  Data initialisers of kind 0x03 refer to it.
+
+Extern: "X" sym
+	An undefined symbol used by the code, so c4 can emit it in .symtab.
+	Defined globals come from the D/F records.
+
+Function Declaration: "F" flags sym "\xff"
+Function Definition: "F" flags sym args "\xff\xff" vars "\xff\xff"
+		     code "\xff" frame "\xff\xff" "\xff"
+
+	flags, args, vars: see *.ssa.
+	code: instruction records, terminated by 0xff.
+	frame (this is the c3-analogue of the SSA regs table):
+		word framesize		total bytes subtracted below bp
+		byte nsaved		number of callee-saved registers
+		byte saved[nsaved]	register numbers (si, di, ...)
+		word nloc		number of args+vars
+		word locsite[nloc]	signed bp offsets; args are positive
+					(from [bp+4]), locals negative
+		"\xff\xff"		end of frame
+		"\xff"			end of function
+
+## Operands
+
+Each instruction operand is a kind byte followed by its payload:
+
+	"R" reg			register
+	"B" word		bp-relative memory, [bp+word]
+	"M" reg word		memory through [reg+word]
+	"I" word		immediate word (or byte if size says so)
+	"S" sym word		symbol/label + addend; c4 chooses ABS16 or
+				PC16 from the instruction.  Generated labels
+				use the high-bit sym encoding.
+
+## Instructions
+
+All fields are bytes unless shown as word.  The instruction tag is the
+first byte.
+
+	"m" size dst src	MOV
+	"a" op size dst src	ALU: op is 'add','sub','and','or','xor',
+				'adc','sbb' or 'cmp'
+	"t" size dst src	TEST
+	"u" op size dst		unary: 'neg','not','mul','div'
+	"h" op size dst count	shift: 'shl' or 'shr'; count is an operand
+	"l" dst addr		LEA
+	"d" size dst addr	load  (dst = [addr])
+	"s" size addr src	store ([addr] = src)
+	"p" src			push
+	"o" dst			pop
+	"c" target		call (target may be S, R or M)
+	"j" target		jump
+	"J" cc target		conditional jump; cc is 0..15 (o,no,b,ae,e,
+				ne,be,a,s,ns,p,np,l,ge,le,g)
+	"r"			return
+	"x" opcode		fixed/no-operand instruction (cwd, ...)
+	"L" sym			label definition
+
+Far load/store can be emitted as the explicit word moves c3 already
+generates, so they need no special instruction tag.  The code stream is
+otherwise just the machine-dependent form of what c3 used to print as
+NASM; c4 is free to combine, delete or reorder these records before
+encoding them.

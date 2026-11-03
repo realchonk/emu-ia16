@@ -2,7 +2,7 @@
 
 This directory is the driver for a small, self-hosting C compiler targeting
 16-bit x86 (IA-16, 80286 protected mode) running under `emu`. The compiler is
-split into four guest programs that communicate through temp files:
+split into guest programs that communicate through temp files:
 
 ```
 source.c
@@ -12,14 +12,21 @@ source.c
    v
    |  c1     (AST -> SSA)                 -> .ssa  (uses .tmp scratch)
    v
+   |  c2     (SSA optimizer)              -> .opt
+   v
    |  c3     (SSA -> NASM)                -> .asm
    v
-  nasm -> .o -> xcc/link -> flat 16-bit binary -> emu
+   |  as     (bin/as, NASM subset)        -> .o
+   v
+  xcc/link -> flat 16-bit binary -> emu
 ```
 
-`cc` itself is `cc.c`; it only knows how to fork/exec the four passes and
-manage the intermediate files. It is **not** a full cc: it accepts only `-k`
-(keep temp files). There is no `-c`, `-o`, `-I`, etc. Do not assume otherwise.
+`cc` itself is `cc.c`; it forks/execs the passes and manages the
+intermediate files. It is **not** a full cc: besides the source files it
+accepts only `-k` (keep temp files) and `-mcmodel=small|large` (default
+small). There is no `-c`, `-o`, `-I`, etc. Do not assume otherwise.
+The assembler is the guest program in `bin/as`; it always emits ELF32
+relocatable objects and takes `-mcpu=8086|80286`.
 
 ## Build and run
 
@@ -32,8 +39,9 @@ mk bin/cc/cc         # just the driver
 mk                   # whole tree
 ```
 
-`mk bin/cc/run` runs `cc test.c -k` under emu, assembles `test.asm` with `xcc`,
-and runs the result. Expected output:
+`mk bin/cc/run` runs `cc test.c -k` under emu, assembles `test.asm` to
+`test.o` with `bin/as`, links it with `xcc`, and runs the result. Expected
+output:
 
 ```
 AAAAAAAA
@@ -52,8 +60,9 @@ E=./emu/emu; L=./lib
 $E $L/cpp/cpp -I$L/libc/include foo.c foo.i
 $E $L/c0/c0  foo.ast foo.str foo.sym < foo.i
 $E $L/c1/c1  foo.tmp < foo.ast > foo.ssa
-$E $L/c3/c3  foo.str foo.sym < foo.ssa > foo.asm
-nasm -felf32 foo.asm -o foo.o
+$E $L/c2/c2  < foo.ssa > foo.opt
+$E $L/c3/c3  foo.str foo.sym < foo.opt > foo.asm
+$E bin/as/as -felf32 -mcpu=80286 -o foo.o foo.asm
 ```
 
 `cc`'s embedded pass paths are `./../../lib/...`, relative to the CWD, so
@@ -107,6 +116,25 @@ ids; c3 assigns physical homes.
   0xff`. `l slot` indexes `args ++ vars`.
 - c0's own control flow produces labels with 0 params; only the synthetic merge
   blocks for `&&`, `||` and `?:` (built in `lib/c1/ssa.c`) have 1 param.
+
+### c2 (SSA optimizer)
+
+`lib/c2` reads CIR\001 and writes an optimized stream for c3.  It keeps the
+same static pools as c3 (`MAXINS`, `MAXVAL`, `ARGPOOL`) and does not malloc.
+The optimizer is block-local for CSE (a value defined in one predecessor
+must not be reused on another path), and includes:
+
+- CSE of constants, strings, `g`/`l` addresses and pure `C`/`u`/`b` values
+- constant folding and simple algebraic identities
+- immediate operands for `b` where c3 supports them, including
+  commuting a constant left operand to the right
+- strength reduction of constant `*`, `/` and `%` by powers of two
+- store-to-load forwarding and removal of overwritten stores
+- dead pure-instruction elimination
+- constant-condition branches and redundant fall-through jumps
+
+The pass is split into `main.c` (parsing/serialization) and `opt.c` (the
+optimization passes) so each file stays inside c1's expression pool.
 
 ### c3 (SSA -> asm)
 
@@ -171,6 +199,12 @@ is too large — `cc`-compiled `lib/c3/emit.c` alone is ~56K of text, so a
 self-built c3 does not fit the segment yet; (2) c0 emits plain tentative
 definitions (`T x;` at file scope) as `D` records with `SC_EXTERN`, so c3
 declares them `extern` and a multi-unit self-link is missing its definitions.
+
+The minimal assembler in `bin/as` is now compiled by bin/cc's own passes and
+its self-built object/link fits comfortably in the 64 KiB segment.  The
+resulting self-hosted binary does not yet assemble correctly: the same c3
+output assembled with nasm shows the same failure, so this is a current
+code-generator bug rather than an assembler-size problem.
 
 ## Testing the compiler
 

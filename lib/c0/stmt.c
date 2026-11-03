@@ -86,7 +86,7 @@ void
 fdef_dcl (d)
 struct dcl *d;
 {
-	struct type *tp = dcltype (curbase (), d);
+	struct type *tp = dcltype (curbase (), d, curd_far ());
 	struct symb *sp, *p;
 	struct symb *plist[NLOC];
 	int name = dclname (d);

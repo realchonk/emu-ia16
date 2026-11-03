@@ -58,6 +58,7 @@ struct insn {
 			byte size;	/* SZ_B/W/D */
 			word dst;	/* result value */
 			word imm;	/* value (B/W), low word (D) */
+			word immhi;	/* high word (D) */
 		} i;
 		struct {		/* 'S': string literal */
 			word dst;
@@ -117,6 +118,13 @@ extern int		nins;
 extern word		nval;
 extern word		argpool[];
 extern int		nargpool;
+extern byte		vdw[];
+
+/* value is a dword (kept in a frame slot) */
+#define VDW(v)		(vdw[(v) >> 3] & (1 << ((v) & 7)))
+/* call arguments carry a dword flag in the high bit of their pool word */
+#define AVAL(w)		((w) & 0x7fff)
+#define ADW(w)		((w) & 0x8000)
 
 void	get ();
 byte	getb ();

@@ -2,8 +2,13 @@
 /boot/boot
 /bin/echo/echo
 /bin/cat/cat
+/bin/as/as
+/bin/as/as.asm
+/bin/as/elf.asm
+/bin/as/test
 /bin/cc/cc
 /bin/cc/*.asm
+/bin/cc/test
 /bin/fsdb/fsdb
 /bin/hello/hello
 /bin/newfs/newfs
@@ -13,6 +18,7 @@
 /bin/yacc/y.tab.c
 /lib/c0/c0
 /lib/c1/c1
+/lib/c2/c2
 /lib/c3/c3
 /sys/sys
 /_install
@@ -24,5 +30,6 @@
 **/*.str
 **/*.sym
 **/*.ssa
+**/*.opt
 **/*.tmp
 **/*.bin

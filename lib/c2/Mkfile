@@ -1,0 +1,4 @@
+NAME = c2
+OBJS = main.o opt.o
+
+.expand prog

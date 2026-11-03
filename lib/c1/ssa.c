@@ -239,6 +239,46 @@ word ai, si;
 	ecw (si);
 }
 
+static word
+emit_nearfar (s, seg)
+word s;
+byte seg;
+{
+	word d;
+
+	d = newval (DWORD);
+	ecb (seg);
+	ecw (d);
+	ecw (s);
+	return d;
+}
+
+static word
+emit_far_load (sz, ai)
+int sz;
+word ai;
+{
+	word d;
+
+	d = newval (sz);
+	ecb ('f');
+	ecb (sz);
+	ecw (d);
+	ecw (ai);
+	return d;
+}
+
+static void
+emit_far_store (sz, ai, si)
+int sz;
+word ai, si;
+{
+	ecb ('s');
+	ecb (sz);
+	ecw (ai);
+	ecw (si);
+}
+
 /* close the current block with a fall-through jump if still open */
 static void
 close_block (lab)
@@ -253,9 +293,9 @@ word lab;
 }
 
 static word
-emit_label (lab, n)
+emit_labelsz (lab, n, sz)
 word lab;
-int n;
+int n, sz;
 {
 	word first;
 	int i;
@@ -265,9 +305,17 @@ int n;
 	ecw (n);
 	first = nval;
 	for (i = 0; i < n; ++i)
-		ecw (newval (WORD));
+		ecw (newval (sz));
 	open = 1;
 	return first;
+}
+
+static word
+emit_label (lab, n)
+word lab;
+int n;
+{
+	return emit_labelsz (lab, n, WORD);
 }
 
 static void
@@ -352,18 +400,24 @@ int isand;
 	word a, c, rhs, done, shortv, b, cb, one, zero, ta[1], fa[1];
 
 	a = eexpr (-1, e->e_b.b_l);
-	c = asword (a);
+	c = a;
 	rhs = newlbl ();
 	done = newlbl ();
 
 	shortv = emit_int (WORD, isand ? 0 : 1);
-	ta[0] = shortv;
-	/* if c is false, go straight to done with the short-circuit value */
-	emit_branch (c, rhs, 0, (word *) 0, done, 1, ta);
+	/* && short-circuits with 0 when the left side is false; ||
+	   short-circuits with 1 when it is true */
+	if (isand) {
+		ta[0] = shortv;
+		emit_branch (c, rhs, 0, (word *) 0, done, 1, ta);
+	} else {
+		ta[0] = shortv;
+		emit_branch (c, done, 1, ta, rhs, 0, (word *) 0);
+	}
 	emit_label (rhs, 0);
 
 	b = eexpr (-1, e->e_b.b_r);
-	cb = asword (b);
+	cb = b;
 	one = emit_int (WORD, 1);
 	zero = emit_int (WORD, 0);
 	ta[0] = one;
@@ -377,24 +431,32 @@ ternary (e)
 struct expr *e;
 {
 	word c, thenl, elsel, donel, vt, vf, ta[1], fa[1];
+	int sz;
 
-	c = asword (eexpr (-1, e->e_t.t_c));
+	sz = st (e->e_t.t_ty);
+	if (sz == BYTE)
+		sz = WORD;
+	c = eexpr (-1, e->e_t.t_c);
 	thenl = newlbl ();
 	elsel = newlbl ();
 	donel = newlbl ();
 	emit_branch (c, thenl, 0, (word *) 0, elsel, 0, (word *) 0);
 
 	emit_label (thenl, 0);
-	vt = asword (eexpr (e->e_t.t_ty, e->e_t.t_t));
+	vt = eexpr (e->e_t.t_ty, e->e_t.t_t);
+	if (sz != DWORD)
+		vt = asword (vt);
 	ta[0] = vt;
 	emit_jump (donel, 1, ta);
 
 	emit_label (elsel, 0);
-	vf = asword (eexpr (e->e_t.t_ty, e->e_t.t_f));
+	vf = eexpr (e->e_t.t_ty, e->e_t.t_f);
+	if (sz != DWORD)
+		vf = asword (vf);
 	fa[0] = vf;
 	emit_jump (donel, 1, fa);
 
-	return emit_label (donel, 1);
+	return emit_labelsz (donel, 1, sz);
 }
 
 static word
@@ -426,8 +488,9 @@ struct expr *e;
 }
 
 static word
-incdec (e)
+incdec (e, far)
 struct expr *e;
+int far;
 {
 	struct expr *le;
 	word addr, old, nv, ty2, t;
@@ -437,12 +500,21 @@ struct expr *e;
 	ty2 = e->e_n.n_ty;
 	sz = st (ty2);
 
-	addr = le->e_type == '*' ? eexpr (WORD, le->e_d.d_e)
-				 : eexpr (-1, le);
-	old = emit_load (sz, addr);
+	if (far)
+		addr = eexpr (-1, le);
+	else
+		addr = le->e_type == '*' ? eexpr (WORD, le->e_d.d_e)
+					 : eexpr (-1, le);
+	if (far)
+		old = emit_far_load (sz, addr);
+	else
+		old = emit_load (sz, addr);
 	nv = emit_bin (sz, 0, (byte) e->e_n.n_op, old,
 		       emit_int (WORD, e->e_n.n_scale));
-	emit_store (sz, addr, nv);
+	if (far)
+		emit_far_store (sz, addr, nv);
+	else
+		emit_store (sz, addr, nv);
 
 	t = e->e_n.n_when ? nv : old;	/* prefix new, postfix old */
 	return t;
@@ -520,7 +592,26 @@ struct expr *e;
 		d = callx (e);
 		break;
 	case 'n':
-		d = incdec (e);
+		d = incdec (e, 0);
+		break;
+	case 'N':
+		d = incdec (e, 1);
+		break;
+	case 'p':
+		d = emit_nearfar (eexpr (-1, e->e_u.u_e), 'p');
+		break;
+	case 'q':
+		d = emit_nearfar (eexpr (-1, e->e_u.u_e), 'q');
+		break;
+	case 'f':
+		d = emit_far_load (st (e->e_d.d_ty),
+				   eexpr (-1, e->e_d.d_e));
+		break;
+	case 's':
+		ai = eexpr (-1, e->e_a.a_d);
+		si = eexpr (e->e_a.a_ty, e->e_a.a_s);
+		emit_far_store (st (e->e_a.a_ty), ai, si);
+		d = si;
 		break;
 	case ',':
 		eexpr (-1, e->e_C.C_l);
@@ -571,7 +662,7 @@ struct stmt *s;
 		emit_jump (s->s_sym, 0, (word *) 0);
 		break;
 	case 'B':
-		r = asword (eexpr (-1, s->s_B.B_c));
+		r = eexpr (-1, s->s_B.B_c);
 		emit_branch (r, s->s_B.B_t, 0, (word *) 0,
 			     s->s_B.B_f, 0, (word *) 0);
 		break;

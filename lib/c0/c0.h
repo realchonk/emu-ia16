@@ -24,7 +24,7 @@ extern int	astfd, symfd, strfd;
 #define	NINT	448			/* interned names (string file offsets) */
 
 /* type.c */
-#define	NTYPE	320			/* type pool entries */
+#define	NTYPE	512			/* type pool entries */
 
 /* decl.c */
 #define	NSYMB	640			/* symbol pool entries */
@@ -75,6 +75,7 @@ extern int	astfd, symfd, strfd;
 #define	CASE		268
 #define	DEFAULT		269
 #define	CONST		270
+#define	FAR		271
 
 /* storage class keywords; token SCLASS, value one of the SC_* codes */
 #define	SCLASS		280
@@ -134,6 +135,7 @@ extern int	astfd, symfd, strfd;
 #define	T_PTR		0x0400
 #define	T_ARY		0x0800
 #define	T_FUNC		0x1000
+#define	T_FAR		0x2000		/* pointer is 32 bits: offset:segment */
 
 /* tree operator codes; single characters are used where natural */
 #define	O_EQ		0x80
@@ -173,7 +175,8 @@ extern int	astfd, symfd, strfd;
 #define	O_LCON	0xa2
 
 struct type {
-	int		 t_op;		/* BT_* bits or T_* code */
+	int		 t_op;		/* BT_* bits or T_* code; T_FAR is
+					   or'd into a T_PTR */
 	struct type	*t_tp;		/* pointee / element / return type */
 	int		 t_size;	/* T_ARY: element count; T_STRUCT: bytes */
 	struct symb	*t_memb;	/* T_STRUCT/T_UNION: members;
@@ -221,6 +224,7 @@ struct dcl {
 /* declaration specifiers */
 struct dspec {
 	int		 p_bt;
+	int		 p_far;
 	struct type	*p_tp;
 };
 
@@ -257,6 +261,8 @@ extern int	 yychar;		 /* parser lookahead, for the lexer hack */
 extern long	 numval;		 /* value of the last INTEGER */
 extern int	 numbt;			 /* BT_* bits of the last INTEGER */
 extern int	 nerrors;
+extern int	 farall;		 /* -mcmodel=large: all data pointers
+					    are 32-bit far pointers */
 extern char	 sdata[];		 /* the string bytes, for initializers */
 
 int	 yylex ();
@@ -271,10 +277,10 @@ int	 c0getc (), c0ungetc (), strconcat (), intern ();
 char	*namebuf ();		 /* read a name back from the string file */
 
 /* type.c */
-struct type	*mktype (), *btype (), *ptrtype (), *decay (), *usual ();
-int		 fixbt (), isarith (), ischar (), isptr (), isscalar (),
-		 compat (),
-		 tysize ();
+struct type	*mktype (), *btype (), *ptrtype (), *farptrtype (), *decay (),
+		 *usual ();
+int		 fixbt (), isarith (), ischar (), isptr (), isfarptr (),
+		 isscalar (), compat (), tysize ();
 
 /* decl.c */
 extern int	 nscope;
@@ -284,12 +290,12 @@ struct type	*curbase (), *su_begin (), *su_end (), *su_ref (),
 		 *dcltype (), *tn_type ();
 struct dcl	*dstar (), *dptrn (), *dchain (), *dname (), *dfunc (),
 		 *dary ();
-struct dspec	*tn_bt (), *tn_td (), *tn_su (), *tn_cat ();
+struct dspec	*tn_bt (), *tn_td (), *tn_su (), *tn_cat (), *tn_far ();
 int		 dclname ();
-int		 curd_sc (), xstrnlen ();
+int		 curd_sc (), curd_far (), xstrnlen ();
 void		 dcl_reset (), freesymb (), sc_sclass (), sc_type (),
-		 sc_const (), sc_su (), sc_td (), member (), bindparam (),
-		 dclinst (), chkinit (), blkpush (), blkpop ();
+		 sc_const (), sc_far (), sc_su (), sc_td (), member (),
+		 bindparam (), dclinst (), chkinit (), blkpush (), blkpop ();
 
 /* expr.c */
 struct node	*nname (), *ncon (), *nstr (), *nbina (), *nlog (),

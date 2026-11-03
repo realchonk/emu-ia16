@@ -44,6 +44,7 @@ static const struct kwent kwtab[] = {
 	{ "case",	CASE,		0 },
 	{ "default",	DEFAULT,	0 },
 	{ "const",	CONST,		0 },
+	{ "__far",	FAR,		0 },
 	{ "auto",	SCLASS,		SC_AUTO },
 	{ "static",	SCLASS,		SC_STATIC },
 	{ "extern",	SCLASS,		SC_EXTERN },

@@ -1,4 +1,5 @@
-.SUBDIRS:	cat	\
+.SUBDIRS:	as	\
+		cat	\
 		cc	\
 		echo	\
 		fsdb	\

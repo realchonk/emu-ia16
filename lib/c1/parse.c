@@ -183,6 +183,28 @@ expr ()
 		e->e_n.n_scale	= getw ();
 		e->e_n.n_e	= expr ();
 		break;
+	case 'N':
+		e->e_n.n_ty	= ty ();
+		e->e_n.n_op	= getb ();
+		e->e_n.n_when	= getb ();
+		e->e_n.n_scale	= getw ();
+		e->e_n.n_e	= expr ();
+		break;
+	case 'p':
+	case 'q':
+		e->e_u.u_ty	= ty ();
+		e->e_u.u_op	= 0;
+		e->e_u.u_e	= expr ();
+		break;
+	case 'f':
+		e->e_d.d_ty	= ty ();
+		e->e_d.d_e	= expr ();
+		break;
+	case 's':
+		e->e_a.a_ty	= ty ();
+		e->e_a.a_d	= expr ();
+		e->e_a.a_s	= expr ();
+		break;
 	case ',':
 		e->e_C.C_ty	= ty ();
 		e->e_C.C_l	= expr ();

@@ -6,17 +6,19 @@ CFLAGS += -DINCDIR=\"$./lib/libc/include\"
 CFLAGS += -DCPP=\"$./lib/cpp/cpp\"
 CFLAGS += -DC0=\"$./lib/c0/c0\"
 CFLAGS += -DC1=\"$./lib/c1/c1\"
+CFLAGS += -DC2=\"$./lib/c2/c2\"
 CFLAGS += -DC3=\"$./lib/c3/c3\"
+CFLAGS += -DAS=\"$./bin/as/as\"
 
-RDEPS = $./lib/cpp $./lib/c0 $./lib/c1 $./lib/c3
+RDEPS = $./lib/cpp $./lib/c0 $./lib/c1 $./lib/c2 $./lib/c3 $./bin/as/as
 
 run: ${RDEPS} cc
 	${EMU} ./cc test.c -k
-	$./xcc -o test test.asm
+	$./xcc -o test test.o
 	${EMU} ./test
 
 
 clean-extra:
-	rm -f *.i *.ast *.str *.sym *.ssa *.tmp *.asm test
+	rm -f *.i *.ast *.str *.sym *.ssa *.opt *.tmp *.asm test test.o
 
 .expand prog

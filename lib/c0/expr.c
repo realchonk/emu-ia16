@@ -308,6 +308,31 @@ struct node *e;
 	return t->t_op != T_FUNC && t->t_op != T_ARY;
 }
 
+/* whether an lvalue is reached through a far pointer */
+static int
+far_lvalue (e)
+struct node *e;
+{
+	struct type *lt, *rt;
+
+	switch (e->n_op) {
+	case '*':
+		return isfarptr (decay (e->n_l->n_tp));
+	case O_INDEX:
+		lt = decay (e->n_l->n_tp);
+		rt = decay (e->n_r->n_tp);
+		if (isptr (lt))
+			return isfarptr (lt);
+		return isfarptr (rt);
+	case O_MEMBER:
+		return far_lvalue (e->n_l);
+	case O_ARROW:
+		return isfarptr (decay (e->n_l->n_tp));
+	default:
+		return 0;
+	}
+}
+
 struct node *
 nasgn (op, l, r)
 int op;
@@ -383,7 +408,7 @@ struct node *e;
 
 	switch (op) {
 	case '*':
-		if (t->t_op != T_PTR) {
+		if (!isptr (t)) {
 			typerr ("deref of non-ptr");
 			return mknode (op, btype (BT_INT), e, NULL);
 		}
@@ -427,6 +452,8 @@ struct node *e;
 	}
 	if (t->t_op == T_ARY)		/* &array: pointer to element */
 		t = t->t_tp;
+	if (far_lvalue (e))
+		return mknode (O_ADDR, farptrtype (t), e, NULL);
 	return mknode (O_ADDR, ptrtype (t), e, NULL);
 }
 
@@ -480,7 +507,7 @@ char *name;
 	t = l->n_tp;
 	if (op == O_ARROW) {
 		t = decay (t);
-		if (t == NULL || t->t_op != T_PTR) {
+		if (t == NULL || !isptr (t)) {
 			typerr ("-> needs a ptr");
 			return mknode (op, btype (BT_INT), l, NULL);
 		}
@@ -531,7 +558,7 @@ struct node *f, *args;
 	ft = f->n_tp;
 	if (ft != NULL && ft->t_op == T_FUNC)
 		;
-	else if ((ft = decay (ft)) != NULL && ft->t_op == T_PTR
+	else if ((ft = decay (ft)) != NULL && isptr (ft)
 		 && ft->t_tp->t_op == T_FUNC)
 		ft = ft->t_tp;
 	else {

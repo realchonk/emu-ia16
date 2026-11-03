@@ -11,6 +11,8 @@ static struct type	tpool[NTYPE];
 static int		ntpool;
 static struct type	*bcache[32];
 
+int			farall;		/* -mcmodel=large */
+
 struct type *
 mktype (op, tp, size, memb, tag)
 int op, size;
@@ -93,7 +95,15 @@ int
 isptr (t)
 struct type *t;
 {
-	return t != NULL && t->t_op == T_PTR;
+	return t != NULL && (t->t_op & ~T_FAR) == T_PTR;
+}
+
+int
+isfarptr (t)
+struct type *t;
+{
+	return t != NULL && (t->t_op & ~T_FAR) == T_PTR
+	    && (t->t_op & T_FAR) != 0;
 }
 
 int
@@ -114,20 +124,45 @@ struct type *t;
 
 static struct type	*ptrcache[NPTRTY];
 static int		 nptrty;
+static struct type	*fptrcache[NPTRTY];
+static int		 nfptrty;
+
+static struct type *
+mkptr (t, far)
+struct type *t;
+int far;
+{
+	struct type	**cache;
+	int		*n;
+	int		 i;
+
+	cache = far ? fptrcache : ptrcache;
+	n = far ? &nfptrty : &nptrty;
+	for (i = 0; i < *n; ++i)
+		if (cache[i]->t_tp == t)
+			return cache[i];
+	if (*n >= NPTRTY)		/* pathological: fall back */
+		return mktype (T_PTR | (far ? T_FAR : 0), t, 0, NULL, NULL);
+	cache[*n] = mktype (T_PTR | (far ? T_FAR : 0), t, 0, NULL, NULL);
+	return cache[(*n)++];
+}
 
 struct type *
 ptrtype (t)
 struct type *t;
 {
-	int i;
+	/* In the large code model every data pointer is far.  Function
+	   pointers stay near until far function pointers are supported. */
+	if (farall && (t == NULL || t->t_op != T_FUNC))
+		return mkptr (t, 1);
+	return mkptr (t, 0);
+}
 
-	for (i = 0; i < nptrty; ++i)
-		if (ptrcache[i]->t_tp == t)
-			return ptrcache[i];
-	if (nptrty >= NPTRTY)		/* pathological: fall back */
-		return mktype (T_PTR, t, 0, NULL, NULL);
-	ptrcache[nptrty] = mktype (T_PTR, t, 0, NULL, NULL);
-	return ptrcache[nptrty++];
+struct type *
+farptrtype (t)
+struct type *t;
+{
+	return mkptr (t, 1);
 }
 
 /* arrays and functions decay to pointers when used in expressions */
@@ -185,6 +220,9 @@ struct type *t;
 		return 0;
 	switch (t->t_op) {
 	case T_PTR:
+		return (t->t_op & T_FAR) ? 4 : 2;
+	case T_PTR | T_FAR:
+		return 4;
 	case T_FUNC:
 		return 2;
 	case T_ARY:
