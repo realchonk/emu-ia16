@@ -20,6 +20,7 @@
 /lib/c1/c1
 /lib/c2/c2
 /lib/c3/c3
+/lib/c4/c4
 /sys/sys
 /_install
 **/*.o
@@ -31,5 +32,6 @@
 **/*.sym
 **/*.ssa
 **/*.opt
+**/*.mdi
 **/*.tmp
 **/*.bin
