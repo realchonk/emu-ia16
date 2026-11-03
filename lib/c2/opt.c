@@ -239,7 +239,8 @@ int idx;
 {
 	struct insn *in;
 	word a, b, dst, mask, v;
-	int size, hasb, isimm, j;
+	int size, hasb, isimm, j, sgn;
+	short sa, sb;
 
 	in = &ins[idx];
 	a = resolve (in->v.b.a);
@@ -250,6 +251,7 @@ int idx;
 	in->v.b.bi = b;
 	size = in->v.b.fl & 3;
 	mask = maskof (size);
+	sgn = (in->v.b.fl & 4) != 0;
 
 	/* c3 can use an immediate only in the right operand.  For
 	   commutative operations, move a constant left operand over. */
@@ -276,6 +278,14 @@ int idx;
 		word av = kval[a] & mask;
 		int ok = 1;
 		v = 0;
+		sa = (short) av;
+		sb = (short) b;
+		if (size == SZ_B) {
+			if (av & 0x80)
+				sa = (short) (av | 0xff00);
+			if (b & 0x80)
+				sb = (short) (b | 0xff00);
+		}
 		switch (in->v.b.bop) {
 		case '+': v = av + b; break;
 		case '-': v = av - b; break;
@@ -286,7 +296,10 @@ int idx;
 		case '/':
 		case '%':
 			if (b == 0) { ok = 0; break; }
-			v = in->v.b.bop == '/' ? av / b : av % b;
+			if (sgn)
+				v = in->v.b.bop == '/' ? sa / sb : sa % sb;
+			else
+				v = in->v.b.bop == '/' ? av / b : av % b;
 			break;
 		case 'l':
 			if (b >= 16) { ok = 0; break; }
@@ -296,12 +309,12 @@ int idx;
 			if (b >= 16) { ok = 0; break; }
 			v = av >> b;
 			break;
-		case '<': v = av < b; break;
-		case '>': v = av > b; break;
-		case 'L': v = av <= b; break;
-		case 'G': v = av >= b; break;
-		case 'E': v = av == b; break;
-		case 'N': v = av != b; break;
+		case '<': v = sgn ? sa < sb : av < b; break;
+		case '>': v = sgn ? sa > sb : av > b; break;
+		case 'L': v = sgn ? sa <= sb : av <= b; break;
+		case 'G': v = sgn ? sa >= sb : av >= b; break;
+		case 'E': v = sgn ? sa == sb : av == b; break;
+		case 'N': v = sgn ? sa != sb : av != b; break;
 		default: ok = 0;
 		}
 		if (ok) {

@@ -108,11 +108,101 @@ fdecl ()
 	putb (0xff);
 }
 
+static struct expr *expr ();
+
+static void
+expr_un (e)
+struct expr *e;
+{
+	switch (e->e_type) {
+	case 'u':
+		e->e_u.u_ty	= ty ();
+		e->e_u.u_op	= getb ();
+		e->e_u.u_e	= expr ();
+		break;
+	case 'p':
+	case 'q':
+		e->e_u.u_ty	= ty ();
+		e->e_u.u_op	= 0;
+		e->e_u.u_e	= expr ();
+		break;
+	case 'f':
+	case '*':
+	case 'C':
+		e->e_d.d_ty	= ty ();
+		e->e_d.d_e	= expr ();
+		break;
+	case 'n':
+	case 'N':
+		e->e_n.n_ty	= ty ();
+		e->e_n.n_op	= getb ();
+		e->e_n.n_when	= getb ();
+		e->e_n.n_scale	= getw ();
+		e->e_n.n_e	= expr ();
+		break;
+	}
+}
+
+static void
+expr_two (e)
+struct expr *e;
+{
+	switch (e->e_type) {
+	case 'b':
+		e->e_b.b_ty	= ty ();
+		e->e_b.b_op	= getb ();
+		e->e_b.b_l	= expr ();
+		e->e_b.b_r	= expr ();
+		break;
+	case '=':
+	case 's':
+		e->e_a.a_ty	= ty ();
+		e->e_a.a_d	= expr ();
+		e->e_a.a_s	= expr ();
+		break;
+	case ',':
+		e->e_C.C_ty	= ty ();
+		e->e_C.C_l	= expr ();
+		e->e_C.C_r	= expr ();
+		break;
+	}
+}
+
+static void
+expr_three (e)
+struct expr *e;
+{
+	e->e_t.t_ty	= ty ();
+	e->e_t.t_c	= expr ();
+	e->e_t.t_t	= expr ();
+	e->e_t.t_f	= expr ();
+}
+
+static void
+expr_call (e)
+struct expr *e;
+{
+	struct expr	*p;
+	byte		 i;
+
+	e->e_c.c_ty	= ty ();
+	e->e_c.c_n	= getb ();
+	if (e->e_c.c_n > MAXARGS)
+		errx (1, "0x%zx: too many arguments, (%u > %u)",
+		      e->e_off, (unsigned)e->e_c.c_n, MAXARGS);
+	e->e_c.c_f	= expr ();
+	if (e->e_c.c_n == 0)
+		return;
+
+	p = e->e_c.c_a	= expr ();
+	for (i = 1; i < e->e_c.c_n; ++i)
+		p = (p->e_next = expr ());
+}
+
 static struct expr *
 expr ()
 {
-	struct expr	*e, *p;
-	byte		 i;
+	struct expr	*e;
 
 	e = ealloc ();
 	e->e_off	= off;
@@ -142,77 +232,26 @@ expr ()
 		e->e_l.l_slot	= getb ();
 		break;
 	case 'u':
-		e->e_u.u_ty	= ty ();
-		e->e_u.u_op	= getb ();
-		e->e_u.u_e	= expr ();
-		break;
-	case 'b':
-		e->e_b.b_ty	= ty ();
-		e->e_b.b_op	= getb ();
-		e->e_b.b_l	= expr ();
-		e->e_b.b_r	= expr ();
-		break;
-	case '?':
-		e->e_t.t_ty	= ty ();
-		e->e_t.t_c	= expr ();
-		e->e_t.t_t	= expr ();
-		e->e_t.t_f	= expr ();
-		break;
-	case 'c':
-		e->e_c.c_ty	= ty ();
-		e->e_c.c_n	= getb ();
-		if (e->e_c.c_n > MAXARGS)
-			errx (1, "0x%zx: too many arguments, (%u > %u)", e->e_off, (unsigned)e->e_c.c_n, MAXARGS);
-		e->e_c.c_f	= expr ();
-		if (e->e_c.c_n == 0)
-			break;
-
-		p = e->e_c.c_a	= expr ();
-		for (i = 1; i < e->e_c.c_n; ++i)
-			p = (p->e_next = expr ());
-		break;
-	case '=':
-		e->e_a.a_ty	= ty ();
-		e->e_a.a_d	= expr ();
-		e->e_a.a_s	= expr ();
-		break;
-	case 'n':
-		e->e_n.n_ty	= ty ();
-		e->e_n.n_op	= getb ();
-		e->e_n.n_when	= getb ();
-		e->e_n.n_scale	= getw ();
-		e->e_n.n_e	= expr ();
-		break;
-	case 'N':
-		e->e_n.n_ty	= ty ();
-		e->e_n.n_op	= getb ();
-		e->e_n.n_when	= getb ();
-		e->e_n.n_scale	= getw ();
-		e->e_n.n_e	= expr ();
-		break;
 	case 'p':
 	case 'q':
-		e->e_u.u_ty	= ty ();
-		e->e_u.u_op	= 0;
-		e->e_u.u_e	= expr ();
-		break;
 	case 'f':
-		e->e_d.d_ty	= ty ();
-		e->e_d.d_e	= expr ();
-		break;
-	case 's':
-		e->e_a.a_ty	= ty ();
-		e->e_a.a_d	= expr ();
-		e->e_a.a_s	= expr ();
-		break;
-	case ',':
-		e->e_C.C_ty	= ty ();
-		e->e_C.C_l	= expr ();
-		e->e_C.C_r	= expr ();
-		break;
 	case '*':
-		e->e_d.d_ty	= ty ();
-		e->e_d.d_e	= expr ();
+	case 'C':
+	case 'n':
+	case 'N':
+		expr_un (e);
+		break;
+	case 'b':
+	case '=':
+	case 's':
+	case ',':
+		expr_two (e);
+		break;
+	case '?':
+		expr_three (e);
+		break;
+	case 'c':
+		expr_call (e);
 		break;
 	default:
 		errx (1, "0x%zx: E: invalid type=%x", e->e_off, e->e_type);
@@ -310,12 +349,12 @@ func ()
 
 	/* code */
 	shead = stail = stmt ();
-	if (shead->s_type != 0xff) {
-		do {
-			s = stmt ();
-			stail->s_next = s;
-			stail = s;
-		} while (s->s_type != 0xff);
+	while (shead->s_type != 0xff) {
+		s = stmt ();
+		stail->s_next = s;
+		stail = s;
+		if (s->s_type == 0xff)
+			break;
 	}
 
 	/* args, then vars: kept for ssa_func() */

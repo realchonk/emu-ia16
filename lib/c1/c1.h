@@ -4,10 +4,10 @@
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
-#define NSPOOL	1024	/* maximum number of stmts */
-#define NEPOOL	2340	/* maximum number of exprs */
+#define NSPOOL	456	/* maximum number of stmts */
+#define NEPOOL	1998	/* maximum number of exprs */
 #define NLPOOL	64	/* maximum number of local variables */
-#define NVALUE	2400	/* maximum number of SSA values per function */
+#define NVALUE	2048	/* maximum number of SSA values per function */
 #define NBLK	256	/* maximum number of labelled blocks */
 #define MAXARGS	16	/* maximum number of arguments for function call */
 

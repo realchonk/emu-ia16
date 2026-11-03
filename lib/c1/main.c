@@ -3,8 +3,19 @@
 #include <err.h>
 #include "c1.h"
 
-int	ofd = 1, tfd;
+int	ofd = 1, tfd = -1;
 size_t	off;
+char	*tmpname;
+
+void
+reset_temp ()
+{
+	if (tfd >= 0)
+		close (tfd);
+	tfd = open (tmpname, O_RDWR | O_CREAT | O_TRUNC, 0644);
+	if (tfd < 0)
+		err (1, "creat('%s')", tmpname);
+}
 
 void
 put (buf, num)
@@ -93,9 +104,8 @@ char	**argv;
 	if (argc != 2)
 		errx (1, "usage: /lib/c1 tmpfile");
 
-	tfd = open (argv[1], O_RDWR | O_CREAT, 0644);
-	if (tfd < 0)
-		err (1, "creat('%s')", argv[1]);
+	tmpname = argv[1];
+	reset_temp ();
 
 	if (write (ofd, "CIR\001", 4) != 4)
 		err (1, "write()");

@@ -35,3 +35,5 @@
 **/*.mdi
 **/*.tmp
 **/*.bin
+/bin/as/as_self
+/bin/as/test_self

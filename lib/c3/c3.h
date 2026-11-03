@@ -5,7 +5,7 @@
 #define SC_GLOBAL	1
 #define SC_STATIC	2
 
-#define MAXINS	2680	/* SSA instructions per function */
+#define MAXINS	2600	/* SSA instructions per function */
 #define MAXVAL	2400	/* SSA values per function (must cover c1's NVALUE) */
 #define MAXLOC	32	/* local (arg+var) slots */
 #define ARGPOOL	512	/* shared pool for edge/call arguments */
@@ -15,7 +15,6 @@ typedef unsigned short	word;
 typedef unsigned long	dword;
 
 extern int strfd, symfd;
-extern char funcname[];
 
 /* register indices */
 #define R_AX	0
@@ -25,6 +24,15 @@ extern char funcname[];
 #define R_SI	4
 #define R_DI	5
 #define NREG	6
+
+/* MDIR-only register numbers, outside the allocator's range */
+#define R_SP	6
+#define R_BP	7
+
+/* segment register numbers */
+#define SEG_ES	0
+#define SEG_SS	2
+#define SEG_DS	3
 
 /* SSA size codes */
 #define SZ_B	0
@@ -130,7 +138,11 @@ void	get ();
 byte	getb ();
 word	getw ();
 dword	getd ();
-const char *getsym ();
+
+/* buffered MDIR output (main.c) */
+void	md_b ();
+void	md_w ();
+void	md_flush ();
 
 int	emit_func ();
 

@@ -52,6 +52,12 @@ newlab ()
 	return ++labgen;
 }
 
+int
+c0_newlab ()
+{
+	return newlab ();
+}
+
 /* a user label, mangled with the function name to stay unique */
 static int
 userlab (name)

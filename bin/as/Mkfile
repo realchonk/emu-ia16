@@ -18,10 +18,15 @@ selfcheck: ${RDEPS}
 	${EMU} ../../lib/c0/c0 as.ast as.str as.sym < as.i
 	${EMU} ../../lib/c1/c1 as.tmp < as.ast > as.ssa
 	${EMU} ../../lib/c2/c2 < as.ssa > as.opt
-	${EMU} ../../lib/c3/c3 as.str as.sym < as.opt > as.asm
-	@echo "bin/cc compiled as.c through c3"
+	${EMU} ../../lib/c3/c3 as.str as.sym < as.opt > as.mdi
+	${EMU} ../../lib/c4/c4 -o as_self.o as.sym < as.mdi
+	$./xcc -o as_self as_self.o
+	${EMU} ./as_self -felf32 -mcpu=80286 -o test_self.o test.asm
+	$./xcc -o test_self test_self.o
+	${EMU} ./test_self
+	@echo "bin/cc compiled as.c through c3 and c4"
 
 clean-extra:
-	rm -f *.o *.i *.ast *.str *.sym *.ssa *.opt *.tmp as.asm elf.asm test test.o test.elf
+	rm -f *.o *.i *.ast *.str *.sym *.ssa *.opt *.tmp *.mdi as.asm elf.asm test test.o test.elf as_self test_self test_self.o
 
 .expand prog

@@ -877,7 +877,9 @@ struct type *oty;
 				return;
 			}
 		}
-		emexpr (e->n_l, e->n_tp);
+		wbyte ('C');
+		wty (e->n_tp, tysize (e->n_tp));
+		emexpr (e->n_l, NULL);
 		return;
 	case O_ADDR:
 		if (e->n_l == NULL) {
@@ -1143,10 +1145,14 @@ int dflt, endlab;
 	struct swcase *c;
 
 	for (c = cases; c != NULL; c = c->next) {
+		int next = 0;
+
+		if (c->next != NULL)
+			next = c0_newlab ();
 		wbyte ('B');
 		wlab (c->lab);
-		if (c->next != NULL)
-			wlab (c->next->lab);
+		if (next != 0)
+			wlab (next);
 		else if (dflt != 0)
 			wlab (dflt);
 		else
@@ -1156,6 +1162,8 @@ int dflt, endlab;
 		wbyte ('E');
 		emexpr (t, NULL);
 		wconst ((long) c->val, btype (BT_INT));
+		if (next != 0)
+			emlab (next);
 	}
 	if (dflt != 0)
 		emjump (dflt);

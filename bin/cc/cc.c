@@ -43,6 +43,10 @@
 # define C3		LIBDIR "/c3"
 #endif
 
+#ifndef C4
+# define C4		LIBDIR "/c4"
+#endif
+
 #ifndef AS
 # define AS		BINDIR "/as"
 #endif
@@ -243,31 +247,32 @@ char *ssafile, *asfile, *strfile, *symfile;
 }
 
 static int
-runas (asfile, objfile)
-char *asfile, *objfile;
+runc4 (mdifile, symfile, objfile)
+char *mdifile, *symfile, *objfile;
 {
-	char	*argv[7];
+	char	*argv[5];
 	int	 ws;
 
-	argv[0] = AS;
-	argv[1] = "-felf32";
-	argv[2] = "-mcpu=80286";
-	argv[3] = "-o";
-	argv[4] = objfile;
-	argv[5] = asfile;
-	argv[6] = NULL;
+	argv[0] = C4;
+	argv[1] = "-o";
+	argv[2] = objfile;
+	argv[3] = symfile;
+	argv[4] = NULL;
 
 	switch (fork ()) {
 	case -1:
-		err (1, "as: fork()");
+		err (1, "c4: fork()");
 	case 0:
-		execv (AS, argv);
-		err (1, "as: execv('%s')", AS);
+		close (0);
+		if (open (mdifile, O_RDONLY) != 0)
+			err (1, "c4: open('%s')", mdifile);
+		execv (C4, argv);
+		err (1, "c4: execv('%s')", C4);
 	default:
 		if (wait (&ws) == -1)
-			err (1, "as: wait()");
+			err (1, "c4: wait()");
 		if (!WIFEXITED (ws) || WEXITSTATUS (ws) != 0) {
-			warnx ("as");
+			warnx ("c4");
 			return 1;
 		}
 		return 0;
@@ -278,7 +283,7 @@ static int
 compile (arg)
 char **arg;
 {
-	char	*i, *ast, *str, *sym, *tmp, *ssa, *opt, *as, *obj;
+	char	*i, *ast, *str, *sym, *tmp, *ssa, *opt, *mdi, *obj;
 	int	 ret = -1;
 
 	i	= ssuffix (*arg, "i");
@@ -288,7 +293,7 @@ char **arg;
 	tmp	= ssuffix (*arg, "tmp");
 	ssa	= ssuffix (*arg, "ssa");
 	opt	= ssuffix (*arg, "opt");
-	as	= ssuffix (*arg, "asm");
+	mdi	= ssuffix (*arg, "mdi");
 	obj	= ssuffix (*arg, "o");
 
 	printf ("%s:\n", *arg);
@@ -305,10 +310,10 @@ char **arg;
 	if (runc2 (ssa, opt) != 0)
 		goto fail;
 
-	if (runc3 (opt, as, str, sym) != 0)
+	if (runc3 (opt, mdi, str, sym) != 0)
 		goto fail;
 
-	if (runas (as, obj) != 0)
+	if (runc4 (mdi, sym, obj) != 0)
 		goto fail;
 
 	ret = 0;
@@ -321,7 +326,7 @@ fail:
 		unlink (ast);
 		unlink (tmp);
 		unlink (opt);
-		unlink (as);
+		unlink (mdi);
 	}
 	free (i);
 	free (sym);
@@ -329,7 +334,7 @@ fail:
 	free (ast);
 	free (tmp);
 	free (opt);
-	free (as);
+	free (mdi);
 	free (obj);
 	return ret;
 }

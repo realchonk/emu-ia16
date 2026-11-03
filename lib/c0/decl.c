@@ -769,19 +769,28 @@ struct node *init;
 		emit_fdecl (name, sc);
 		return;
 	} else {
+		sc = curd.sc == 0 ? (nscope > 0 ? SC_AUTO : SC_GLOBAL)
+				  : curd.sc;
 		old = nscope > 0 ? scopefind (scopes[nscope], name)
 				 : scopefind (globals, name);
 		if (old != NULL) {
 			if (nscope > 0 || !compat (old->s_tp, tp)
 			    || old->s_sc == SC_TYPEDEF)
 				typerr ("redecl %s", (int) namebuf (name));
-			else
+			else {
 				old->s_tp = tp;
+				if (old->s_sc == SC_EXTERN && sc != SC_EXTERN) {
+					/* an extern declaration followed by a
+					   tentative definition */
+					old->s_sc = sc;
+					emit_data (name, sc, tp, init);
+					expr_reset ();
+					return;
+				}
+			}
 			chkinit (tp, init);
 			return;
 		}
-		sc = curd.sc == 0 ? (nscope > 0 ? SC_AUTO : SC_GLOBAL)
-				  : curd.sc;
 	}
 
 	sp = install (name, sc);

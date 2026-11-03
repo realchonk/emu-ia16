@@ -1,7 +1,8 @@
 /*
- * c3 -- SSA (CIR\001, see bin/cc/ast-fmt) -> 16-bit x86 assembly.
+ * c3 -- SSA (CIR\001, see bin/cc/ast-fmt) -> machine-dependent IR
+ * (CIR\002, *.mdi).
  *
- * Reads the SSA on stdin and writes NASM to stdout.  Register allocation is
+ * Reads the SSA on stdin and writes MDIR to stdout.  Register allocation is
  * a linear scan over conservative live intervals (first def .. last use,
  * extended across block boundaries); values that do not fit spill to
  * bp-relative slots.  The ABI is cdecl: arguments on the stack with the
@@ -11,18 +12,41 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdlib.h>
-#include <stdio.h>
 #include <err.h>
 #include "c3.h"
 
 int	strfd, symfd;
 size_t	off;
 
+/* ---- buffered output -------------------------------------------------- */
+static byte	obuf[256];
+static int	ocnt;
+
 void
-rewind_input ()
+md_flush ()
 {
-	if (lseek (0, 0L, SEEK_SET) != 0)
-		err (1, "lseek");
+	if (ocnt != 0) {
+		if (write (1, obuf, ocnt) != ocnt)
+			err (1, "write()");
+		ocnt = 0;
+	}
+}
+
+void
+md_b (b)
+int b;
+{
+	if (ocnt >= (int) sizeof obuf)
+		md_flush ();
+	obuf[ocnt++] = b;
+}
+
+void
+md_w (w)
+int w;
+{
+	md_b (w & 0xff);
+	md_b ((w >> 8) & 0xff);
 }
 
 /* ---- input helpers ---------------------------------------------------- */
@@ -66,39 +90,6 @@ getd ()
 	return d;
 }
 
-static void
-putb (b)
-byte b;
-{
-	printf ("\tdb %u\n", (unsigned) b);
-}
-
-/* Name of the function currently being emitted; generated labels are
-   qualified with it so they do not depend on NASM's positional scoping. */
-char	funcname[64] = "toplevel";
-
-const char *
-getsym (sym)
-word sym;
-{
-	static char buf[96];
-
-	if (sym & 0x8000) {
-		/* Generated label: qualify it.  A leading `$` still escapes
-		   any NASM mnemonic. */
-		snprintf (buf, sizeof buf, "$%s.L%u", funcname,
-			(unsigned) (sym & 0x7fff));
-	} else {
-		int n = pread (symfd, buf + 1, sizeof buf - 2, (long) sym);
-		if (n < 0)
-			n = 0;
-		buf[0] = '$';
-		buf[n + 1] = '\0';
-		buf[strnlen (buf + 1, sizeof buf - 1) + 1] = '\0';
-	}
-	return buf;
-}
-
 /* ---- SSA image of one function ---------------------------------------- */
 struct insn	ins[MAXINS];
 int		nins;
@@ -120,57 +111,43 @@ int n;
 		errx (1, "c3: too many pooled args");
 }
 
-/* Names of symbols defined in this translation unit, so an undefined `call`
-   target or `g` address can be declared extern. */
-#define MAXDEF	128
-word		defs[MAXDEF];
-int		ndefs;
-
 /* ---- data declarations ------------------------------------------------ */
 static void
 def ()
 {
 	byte	flags, cnk;
-	word	sym, sym2, size, i, j, n;
-	int	sc;
+	word	sym, sym2, size, j, n;
 
 	flags = getb ();
 	sym = getw ();
 	size = getw ();
-	sc = flags & 3;
 
-	if (sc == SC_EXTERN) {
-		printf ("extern %s\n", getsym (sym));
+	md_b ('D');
+	md_b (flags);
+	md_w (sym);
+	md_w (size);
+
+	if ((flags & 4) == 0)		/* .bss: no initialiser bytes */
 		return;
-	}
 
-	printf ("section %s\n", (flags & 4) ? ".data" : ".bss");
-	if (sc == SC_GLOBAL)
-		printf ("global %s\n", getsym (sym));
-	printf ("%s:\n", getsym (sym));
-
-	if ((flags & 4) == 0) {
-		printf ("\tresb %u\n", (unsigned) size);
-		return;
-	}
-
-	for (i = 0; (cnk = getb ()) != 0; ) {
+	for (;;) {
+		cnk = getb ();
+		md_b (cnk);
+		if (cnk == 0)
+			return;
 		switch (cnk) {
 		case 0x01:
 			n = getw ();
-			for (j = 0; j < n; ++i, ++j)
-				putb (getb ());
+			md_w (n);
+			for (j = 0; j < n; ++j)
+				md_b (getb ());
 			break;
 		case 0x02:
-			sym2 = getw ();
-			n = getw ();
-			printf ("\tdw %s + %u\n", getsym (sym2), (unsigned) n);
-			break;
 		case 0x03:
 			sym2 = getw ();
 			n = getw ();
-			printf ("\tdw strtab + %u + %u\n",
-				(unsigned) sym2, (unsigned) n);
+			md_w (sym2);
+			md_w (n);
 			break;
 		default:
 			errx (1, "c3: bad init chunk %#x", cnk);
@@ -190,8 +167,12 @@ func ()
 	sym = getw ();
 
 	if ((flags & 4) == 0) {
-		(void) getb ();			/* 0xff */
-		printf ("extern %s\n", getsym (sym));
+		if (getb () != 0xff)
+			errx (1, "c3: malformed F");
+		md_b ('F');
+		md_b (flags);
+		md_w (sym);
+		md_b (0xff);
 		return;
 	}
 
@@ -375,7 +356,8 @@ parse ()
 {
 	byte	type;
 
-	rewind_input ();
+	if (lseek (0, 0L, SEEK_SET) != 0)
+		err (1, "lseek");
 	{
 		char buf[4];
 		get (buf, 4);
@@ -391,201 +373,26 @@ parse ()
 	}
 }
 
-/* ---- symbol discovery pre-pass ---------------------------------------- */
-/* Walk the SSA once (via lseek-rewind) recording defined symbols (D and
-   defined F) and every `g` address, so externs can be declared. */
-static word	refs[256];
-static int	nrefs;
-
-static void
-addref (sym)
-word sym;
-{
-	int i;
-
-	for (i = 0; i < nrefs; ++i)
-		if (refs[i] == sym)
-			return;
-	if (nrefs < 256)
-		refs[nrefs++] = sym;
-	else
-		errx (1, "c3: too many symbol refs");
-}
-
-static void
-skip_strings ()
-{
-	word w;
-
-	while ((w = getw ()) != 0xffff)
-		;
-}
-
-static void
-scan_code ()
-{
-	byte t;
-
-	for (;;) {
-		t = getb ();
-		if (t == 0xff)
-			return;
-		switch (t) {
-		case 'i': {
-			byte sz = getb ();
-			(void) getw ();
-			if (sz == 0) (void) getb ();
-			else if (sz == 1) (void) getw ();
-			else (void) getd ();
-			break;
-		}
-		case 'I': (void) getw (); (void) getd (); break;
-		case 'S': (void) getw (); (void) getw (); break;
-		case 'g': {
-			word rsym;
-			(void) getw ();
-			rsym = getw ();
-			addref (rsym);
-			break;
-		}
-		case 'l': (void) getw (); (void) getb (); break;
-		case 'C': (void) getb (); (void) getw (); (void) getw (); break;
-		case '*': case '=':
-			(void) getb (); (void) getw (); (void) getw (); break;
-		case 'p': (void) getw (); (void) getw (); break;
-		case 'q': (void) getw (); (void) getw (); break;
-		case 'f': (void) getb (); (void) getw (); (void) getw (); break;
-		case 's': (void) getb (); (void) getw (); (void) getw (); break;
-		case 'u':
-			(void) getb (); (void) getb (); (void) getw ();
-			(void) getw (); break;
-		case 'b':
-			(void) getb (); (void) getb (); (void) getw ();
-			(void) getw (); (void) getw (); break;
-		case 'c': {
-			word n;
-			(void) getb ();
-			n = getb ();
-			(void) getw (); (void) getw ();
-			while (n-- > 0) { (void) getb (); (void) getw (); }
-			break;
-		}
-		case 'R': (void) getw (); break;
-		case 'r': break;
-		case 'L': case 'J': {
-			word n;
-			(void) getw ();
-			n = getw ();
-			while (n-- > 0)
-				(void) getw ();
-			break;
-		}
-		case 'B': {
-			word n, nf;
-			(void) getw ();
-			(void) getw ();
-			n = getw ();
-			while (n-- > 0)
-				(void) getw ();
-			(void) getw ();
-			nf = getw ();
-			while (nf-- > 0)
-				(void) getw ();
-			break;
-		}
-		default:
-			errx (1, "c3: scan: bad stmt %c", t);
-		}
-	}
-}
-
-static void
-scan ()
-{
-	byte t;
-
-	rewind_input ();
-	(void) getd ();			/* magic */
-	while (1) {
-		/* detect eof: read a byte; if we are at the end, stop */
-		if (read (0, &t, 1) != 1)
-			return;
-		if (t == 'D') {
-			byte fl;
-			word sym;
-			fl = getb ();
-			sym = getw ();
-			(void) getw ();	/* size */
-			if ((fl & 3) != SC_EXTERN) {
-				if (ndefs >= MAXDEF)
-					errx (1, "c3: too many definitions");
-				defs[ndefs++] = sym;
-			}
-			if (fl & 4) {
-				byte c;
-				while ((c = getb ()) != 0) {
-					if (c == 1) {
-						word n = getw ();
-						while (n-- > 0)
-							(void) getb ();
-					} else {
-						(void) getw ();
-						(void) getw ();
-					}
-				}
-			}
-		} else if (t == 'F') {
-			byte fl = getb ();
-			word sym = getw ();
-			if ((fl & 4) || (fl & 3) != SC_EXTERN) {
-				if (ndefs >= MAXDEF)
-					errx (1, "c3: too many definitions");
-				defs[ndefs++] = sym;
-			}
-			if (!(fl & 4)) {
-				(void) getb ();		/* 0xff */
-				continue;
-			}
-			skip_strings ();		/* args */
-			skip_strings ();		/* vars */
-			scan_code ();
-			skip_strings ();		/* regs */
-			(void) getb ();			/* end 0xff */
-		} else {
-			errx (1, "c3: scan: bad global %c", t);
-		}
-	}
-}
-
-static void
-externs ()
-{
-	int i, j, isdef;
-
-	for (i = 0; i < nrefs; ++i) {
-		if (refs[i] & 0x8000)
-			continue;
-		isdef = 0;
-		for (j = 0; j < ndefs; ++j)
-			if (defs[j] == refs[i])
-				isdef = 1;
-		if (!isdef)
-			printf ("extern %s\n", getsym (refs[i]));
-	}
-}
-
 static void
 strtable ()
 {
-	char	ch;
-	int	n;
+	byte	ch;
+	long	n, i;
 
+	n = lseek (strfd, 0L, SEEK_END);
+	if (n < 0)
+		err (1, "lseek");
 	if (lseek (strfd, 0L, SEEK_SET) < 0)
 		err (1, "lseek");
-	printf ("section .rodata\n");
-	printf ("strtab:\n");
-	while ((n = read (strfd, &ch, 1)) == 1)
-		printf ("\tdb %u\n", (unsigned char) ch);
+	if (n > 0xffff)
+		errx (1, "c3: string table too large");
+	md_b ('T');
+	md_w ((word) n);
+	for (i = 0; i < n; ++i) {
+		if (read (strfd, &ch, 1) != 1)
+			err (1, "read()");
+		md_b (ch);
+	}
 }
 
 int
@@ -603,11 +410,10 @@ char	**argv;
 	if (symfd < 0)
 		err (1, "open(%s)", argv[2]);
 
-	printf ("[bits 16]\n[cpu 286]\n");
-	scan ();
-	externs ();
+	md_b ('C'); md_b ('I'); md_b ('R'); md_b (2);
 	strtable ();
 	parse ();
+	md_flush ();
 
 	close (strfd);
 	close (symfd);

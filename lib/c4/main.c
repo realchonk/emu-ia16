@@ -16,9 +16,9 @@ typedef unsigned short	word;
 #define LINEBUF		256
 #define MAXGSYM		2048
 #define GNAMEPOOL	20000
-#define MAXLSYM		160
+#define MAXLSYM		2048
 #define LNAMEPOOL	1280
-#define MAXFIX		160
+#define MAXFIX		2048
 #define MAXNAME		64
 
 #define S_UNDEF		0xff
@@ -30,6 +30,7 @@ typedef unsigned short	word;
 #define OT_R16		2
 #define OT_IMM		4
 #define OT_MEM		5
+#define OT_SEG		6
 
 #define NOBASE		0xff
 #define W(a, b) (((a)->type == OT_R8 || (b)->type == OT_R8) ? 1 : 2)
@@ -70,7 +71,6 @@ static char	*linep;
 static char	rdbuf[128];
 static int	rdpos, rdlen, ateof;
 static int	infd, outfd, symfd;
-static word	funcsym;
 static int	doemit;
 static int	cursec;
 static word	textoff;
@@ -755,6 +755,20 @@ enc_mov ()
 		fail ("two operands expected");
 	a = &ops[0];
 	b = &ops[1];
+	if (a->type == OT_SEG) {
+		if ((b->type != OT_R16 && b->type != OT_MEM))
+			fail ("bad segment move");
+		outb (0x8e);
+		emit_rm (a->reg, b);
+		return;
+	}
+	if (b->type == OT_SEG) {
+		if (a->type != OT_R16 && a->type != OT_MEM)
+			fail ("bad segment move");
+		outb (0x8c);
+		emit_rm (b->reg, a);
+		return;
+	}
 	w = W (a, b);
 	if (a->type == OT_R16 || a->type == OT_R8) {
 		if (b->type == OT_IMM) {
@@ -828,8 +842,13 @@ int iscall, relop;
 	if (nops != 1)
 		fail ("one operand expected");
 	a = &ops[0];
-	if (a->type != OT_IMM)
-		fail ("bad branch");
+	if (a->type != OT_IMM) {
+		if (a->type != OT_R16 && a->type != OT_MEM)
+			fail ("bad branch");
+		outb (0xff);
+		emit_rm (iscall ? 2 : 4, a);
+		return;
+	}
 	if (iscall) {
 		outb (0xe8);
 		emit_pc (a->sym, a->disp);
@@ -869,13 +888,25 @@ const char *mn;
 	if (streq (mn, "mul")) { enc_unary (4); return; }
 	if (streq (mn, "div")) { enc_unary (6); return; }
 	if (streq (mn, "push")) {
-		if (nops != 1 || ops[0].type != OT_R16)
+		if (nops != 1)
+			fail ("bad push");
+		if (ops[0].type == OT_SEG) {
+			outb (0x06 + (ops[0].reg << 3));
+			return;
+		}
+		if (ops[0].type != OT_R16)
 			fail ("bad push");
 		outb (0x50 + ops[0].reg);
 		return;
 	}
 	if (streq (mn, "pop")) {
-		if (nops != 1 || ops[0].type != OT_R16)
+		if (nops != 1)
+			fail ("bad pop");
+		if (ops[0].type == OT_SEG) {
+			outb (0x07 + (ops[0].reg << 3));
+			return;
+		}
+		if (ops[0].type != OT_R16)
 			fail ("bad pop");
 		outb (0x58 + ops[0].reg);
 		return;
@@ -1316,17 +1347,63 @@ char *buf;
 {
 	int	n;
 
-	if (sym & 0x8000) {
-		snprintf (buf, MAXNAME, "L%u_%u", (unsigned) funcsym,
-			  (unsigned) (sym & 0x7fff));
-		return buf;
-	}
 	n = pread (symfd, buf, MAXNAME - 1, (long) sym);
 	if (n < 0)
 		n = 0;
 	buf[n] = 0;
 	return buf;
 }
+
+/* Generated labels are private to one function and need no names. */
+static int
+findlbl (id, create)
+word id;
+int create;
+{
+	int	i;
+
+	for (i = 0; i < nlsyms; ++i)
+		if (lsyms[i].name == id)
+			return 0x4000 | i;
+	if (!create)
+		fail ("undefined label");
+	if (nlsyms >= MAXLSYM)
+		fail ("too many labels");
+	lsyms[nlsyms].name = id;
+	lsyms[nlsyms].value = 0;
+	lsyms[nlsyms].sec = S_UNDEF;
+	lsyms[nlsyms].flags = F_REF;
+	return 0x4000 | nlsyms++;
+}
+
+static int
+mdsym (s, buf)
+word s;
+char *buf;
+{
+	if (s & 0x8000)
+		return findlbl (s & 0x7fff, 1);
+	return findsym (mdname (s, buf), 1);
+}
+
+static void
+mdlabel (s, buf)
+word s;
+char *buf;
+{
+	int	i;
+
+	if (s & 0x8000) {
+		i = findlbl (s & 0x7fff, 1) & 0x3fff;
+		lsyms[i].sec = 0;
+		lsyms[i].value = secs[0].pos;
+		lsyms[i].flags &= ~F_EXTERN;
+	} else
+		defsym (mdname (s, buf), 0, secs[0].pos);
+}
+
+static const byte	wregmap[8] = { 0, 3, 1, 2, 6, 7, 4, 5 };
+static const byte	bregmap[8] = { 0, 3, 1, 2, 0, 0, 0, 0 };
 
 static int
 mdop (o, size)
@@ -1346,28 +1423,38 @@ int size;
 	kind = mgetb ();
 	switch (kind) {
 	case 'R':
-		o->reg = mgetb ();
+		o->reg = size == SZ_B ? bregmap[mgetb () & 7]
+				      : wregmap[mgetb () & 7];
 		o->type = size == SZ_B ? OT_R8 : OT_R16;
+		break;
+	case 'G':
+		o->reg = mgetb ();
+		o->type = OT_SEG;
 		break;
 	case 'B':
 		o->type = OT_MEM;
 		o->base = 5;		/* bp */
-		o->disp = mgetw ();
+		o->disp = (short) mgetw ();
 		break;
 	case 'M':
 		o->type = OT_MEM;
-		o->base = mgetb ();
-		o->disp = mgetw ();
+		o->base = wregmap[mgetb () & 7];
+		o->disp = (short) mgetw ();
 		break;
 	case 'I':
 		o->type = OT_IMM;
+		o->disp = mgetw ();
+		break;
+	case 'T':
+		o->type = OT_IMM;
+		o->sym = findsym ("strtab", 1);
 		o->disp = mgetw ();
 		break;
 	case 'S':
 		s = mgetw ();
 		a = mgetw ();
 		o->type = OT_IMM;
-		o->sym = findsym (mdname (s, buf), 1);
+		o->sym = mdsym (s, buf);
 		o->disp = a;
 		break;
 	default:
@@ -1435,7 +1522,7 @@ int tag;
 		op = mgetb ();
 		size = mgetb ();
 		mdop (&ops[0], size);
-		mdop (&ops[1], size);
+		mdop (&ops[1], SZ_B);
 		nops = 2;
 		enc_shift (op == 'l' ? 4 : 5);
 		break;
@@ -1507,10 +1594,8 @@ mddata ()
 	sym = mgetw ();
 	size = mgetw ();
 	mdname (sym, buf);
-	if ((flags & 3) == SC_EXTERN) {
-		marksym (buf, F_EXTERN);
-		return;
-	}
+	if ((flags & 3) == SC_EXTERN)
+		return;		/* relocations add it if it is referenced */
 	if ((flags & 3) == SC_GLOBAL)
 		marksym (buf, F_GLOBAL);
 	cursec = (flags & 4) ? 0 : 1;
@@ -1558,9 +1643,7 @@ mdfunc ()
 	if (!(flags & 4)) {
 		if (mgetb () != 0xff)
 			fail ("mdi: bad declaration");
-		mdname (sym, buf);
-		marksym (buf, F_EXTERN);
-		return;
+		return;		/* relocations add it if it is referenced */
 	}
 	while ((w = mgetw ()) != 0xffff)
 		;
@@ -1570,14 +1653,14 @@ mdfunc ()
 	if ((flags & 3) == SC_GLOBAL)
 		marksym (buf, F_GLOBAL);
 	defsym (buf, 0, secs[0].pos);
-	funcsym = sym;
+	cursec = 0;
 	for (;;) {
 		tag = mgetb ();
 		if (tag == 0xff)
 			break;
 		if (tag == 'L') {
 			s = mgetw ();
-			defsym (mdname (s, buf), 0, secs[0].pos);
+			mdlabel (s, buf);
 		} else
 			mdinsn (tag);
 	}
@@ -1591,6 +1674,7 @@ mdfunc ()
 		(void) mgetw ();
 	if (mgetw () != 0xffff || mgetb () != 0xff)
 		fail ("mdi: bad frame");
+	resetlocals ();
 }
 
 static void
@@ -1600,6 +1684,7 @@ mdstr ()
 	word	n, i;
 
 	n = mgetw ();
+	cursec = 0;
 	scopy (buf, "strtab");
 	defsym (buf, 0, secs[0].pos);
 	for (i = 0; i < n; ++i)

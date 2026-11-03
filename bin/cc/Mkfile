@@ -8,9 +8,9 @@ CFLAGS += -DC0=\"$./lib/c0/c0\"
 CFLAGS += -DC1=\"$./lib/c1/c1\"
 CFLAGS += -DC2=\"$./lib/c2/c2\"
 CFLAGS += -DC3=\"$./lib/c3/c3\"
-CFLAGS += -DAS=\"$./bin/as/as\"
+CFLAGS += -DC4=\"$./lib/c4/c4\"
 
-RDEPS = $./lib/cpp $./lib/c0 $./lib/c1 $./lib/c2 $./lib/c3 $./bin/as/as
+RDEPS = $./lib/cpp $./lib/c0 $./lib/c1 $./lib/c2 $./lib/c3 $./lib/c4
 
 run: ${RDEPS} cc
 	${EMU} ./cc test.c -k
@@ -19,6 +19,6 @@ run: ${RDEPS} cc
 
 
 clean-extra:
-	rm -f *.i *.ast *.str *.sym *.ssa *.opt *.tmp *.asm test test.o
+	rm -f *.i *.ast *.str *.sym *.ssa *.opt *.tmp *.mdi *.asm test test.o
 
 .expand prog

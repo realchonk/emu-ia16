@@ -155,8 +155,8 @@ int slot;
 }
 
 static word
-emit_cast (ty, s)
-word ty, s;
+emit_cast (ty, s, sty)
+word ty, s, sty;
 {
 	word d;
 	int isz, osz, flags;
@@ -168,7 +168,7 @@ word ty, s;
 	if (isz == osz)
 		return s;
 	d = newval (osz);
-	flags = osz < isz ? 0 : (signedty (ty) ? 2 : 1);
+	flags = osz < isz ? 0 : (signedty (sty) ? 2 : 1);
 	ecb ('C');
 	ecb (flags);
 	ecw (d);
@@ -375,6 +375,18 @@ word v;
 	return z;
 }
 
+/* Type word of an expression node, before the final conversion.
+   Every expression union member starts with its type word at the same
+   offset; string literals have no type word and act as unsigned words. */
+static word
+exprty (e)
+struct expr *e;
+{
+	if (e->e_type == 'S')
+		return 5;
+	return *(word *) ((char *) e + 6);
+}
+
 /* ---- expression lowering ---------------------------------------------- */
 
 static byte
@@ -539,15 +551,75 @@ struct expr *e;
 	return emit_bin (sz, sg, opcode (e->e_b.b_op), a, b);
 }
 
+static word eexpr ();
+
 static word
-eexpr (ty, e)
-word ty;
+eexpr_un (e)
+struct expr *e;
+{
+	word d;
+
+	switch (e->e_type) {
+	case '*':
+		if (e->e_d.d_ty & 0x8000)
+			d = eexpr (WORD, e->e_d.d_e);	/* array decays */
+		else
+			d = emit_load (st (e->e_d.d_ty),
+				       eexpr (WORD, e->e_d.d_e));
+		break;
+	case 'u':
+		d = emit_un (st (e->e_u.u_ty), (byte) e->e_u.u_op,
+			     eexpr (e->e_u.u_ty, e->e_u.u_e));
+		break;
+	case 'p':
+		d = emit_nearfar (eexpr (-1, e->e_u.u_e), 'p');
+		break;
+	case 'q':
+		d = emit_nearfar (eexpr (-1, e->e_u.u_e), 'q');
+		break;
+	case 'C':
+		d = eexpr (e->e_d.d_ty, e->e_d.d_e);
+		break;
+	case 'f':
+		d = emit_far_load (st (e->e_d.d_ty),
+				   eexpr (-1, e->e_d.d_e));
+		break;
+	}
+	return d;
+}
+
+static word
+eexpr_two (e)
 struct expr *e;
 {
 	word d, ai, si;
 
-	if (e == (struct expr *) 0)
-		return emit_int (WORD, 0);
+	switch (e->e_type) {
+	case '=':
+		ai = eexpr (-1, e->e_a.a_d);
+		si = eexpr (e->e_a.a_ty, e->e_a.a_s);
+		emit_store (st (e->e_a.a_ty), ai, si);
+		d = si;
+		break;
+	case 's':
+		ai = eexpr (-1, e->e_a.a_d);
+		si = eexpr (e->e_a.a_ty, e->e_a.a_s);
+		emit_far_store (st (e->e_a.a_ty), ai, si);
+		d = si;
+		break;
+	case ',':
+		eexpr (-1, e->e_C.C_l);
+		d = eexpr (-1, e->e_C.C_r);
+		break;
+	}
+	return d;
+}
+
+static word
+eexpr_lit (e)
+struct expr *e;
+{
+	word d;
 
 	switch (e->e_type) {
 	case 'i':
@@ -565,22 +637,40 @@ struct expr *e;
 	case 'l':
 		d = emit_l (e->e_l.l_slot);
 		break;
+	}
+	return d;
+}
+
+static word
+eexpr (ty, e)
+word ty;
+struct expr *e;
+{
+	word d;
+
+	if (e == (struct expr *) 0)
+		return emit_int (WORD, 0);
+
+	switch (e->e_type) {
+	case 'i':
+	case 'I':
+	case 'S':
+	case 'g':
+	case 'l':
+		d = eexpr_lit (e);
+		break;
 	case '*':
-		if (e->e_d.d_ty & 0x8000)
-			d = eexpr (WORD, e->e_d.d_e);	/* array decays */
-		else
-			d = emit_load (st (e->e_d.d_ty),
-				       eexpr (WORD, e->e_d.d_e));
+	case 'u':
+	case 'p':
+	case 'q':
+	case 'C':
+	case 'f':
+		d = eexpr_un (e);
 		break;
 	case '=':
-		ai = eexpr (-1, e->e_a.a_d);
-		si = eexpr (e->e_a.a_ty, e->e_a.a_s);
-		emit_store (st (e->e_a.a_ty), ai, si);
-		d = si;
-		break;
-	case 'u':
-		d = emit_un (st (e->e_u.u_ty), (byte) e->e_u.u_op,
-			     eexpr (e->e_u.u_ty, e->e_u.u_e));
+	case 's':
+	case ',':
+		d = eexpr_two (e);
 		break;
 	case 'b':
 		d = binexpr (e);
@@ -597,30 +687,10 @@ struct expr *e;
 	case 'N':
 		d = incdec (e, 1);
 		break;
-	case 'p':
-		d = emit_nearfar (eexpr (-1, e->e_u.u_e), 'p');
-		break;
-	case 'q':
-		d = emit_nearfar (eexpr (-1, e->e_u.u_e), 'q');
-		break;
-	case 'f':
-		d = emit_far_load (st (e->e_d.d_ty),
-				   eexpr (-1, e->e_d.d_e));
-		break;
-	case 's':
-		ai = eexpr (-1, e->e_a.a_d);
-		si = eexpr (e->e_a.a_ty, e->e_a.a_s);
-		emit_far_store (st (e->e_a.a_ty), ai, si);
-		d = si;
-		break;
-	case ',':
-		eexpr (-1, e->e_C.C_l);
-		d = eexpr (-1, e->e_C.C_r);
-		break;
 	default:
 		errx (1, "0x%zx: unimplemented expr: %c", e->e_off, e->e_type);
 	}
-	return emit_cast (ty, d);
+	return emit_cast (ty, d, exprty (e));
 }
 
 static void
@@ -682,7 +752,7 @@ word sym;
 {
 	struct stmt *s;
 	size_t i, n;
-	char buf[128];
+	char buf[32];
 
 	putb ('F');
 	putb (flags);
@@ -700,8 +770,7 @@ word sym;
 	nxtlbl = maxlbl + 1;
 	open = 0;
 
-	if (lseek (tfd, 0L, SEEK_SET) != 0)
-		err (1, "lseek()");
+	reset_temp ();
 
 	for (s = shead; s->s_type != 0xff; s = s->s_next)
 		estmt (s);
@@ -709,10 +778,15 @@ word sym;
 	if (open)
 		ecb ('r');		/* implicit fall-through return */
 
-	/* copy the code out of the scratch file, then append the table */
+	/* copy the code out of the scratch file, then append the table.
+	   Use the file size rather than the byte counter: the scratch
+	   stream is the authority on what was emitted. */
+	n = lseek (tfd, 0L, SEEK_END);
+	if (n == (size_t) -1)
+		err (1, "lseek()");
 	if (lseek (tfd, 0L, SEEK_SET) != 0)
 		err (1, "lseek()");
-	for (n = clen; n > 0; n -= i) {
+	for (; n > 0; n -= i) {
 		i = n < sizeof buf ? n : sizeof buf;
 		if (read (tfd, buf, i) != (int) i)
 			err (1, "read()");
