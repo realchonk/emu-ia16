@@ -1,0 +1,6 @@
+NAME = ld
+OBJS = ld.o
+
+CFLAGS += -Wall -Wextra
+
+.expand prog

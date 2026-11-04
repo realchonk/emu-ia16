@@ -10,12 +10,14 @@ CFLAGS += -DC2=\"$./lib/c2/c2\"
 CFLAGS += -DC3A=\"$./lib/c3/c3a\"
 CFLAGS += -DC3B=\"$./lib/c3/c3b\"
 CFLAGS += -DC4=\"$./lib/c4/c4\"
+CFLAGS += -DLD=\"$./bin/ld/ld\"
+CFLAGS += -DCRT0=\"$./lib/crt0.o\"
+CFLAGS += -DLIBC=\"$./lib/libc/libc.a\"
 
-RDEPS = $./lib/cpp $./lib/c0 $./lib/c1 $./lib/c2 $./lib/c3 $./lib/c4
+RDEPS = $./lib/cpp $./lib/c0 $./lib/c1 $./lib/c2 $./lib/c3 $./lib/c4 $./bin/ld
 
 run: ${RDEPS} cc
-	${EMU} ./cc test.c -k
-	$./xcc -o test test.o
+	${EMU} ./cc -o test test.c
 	${EMU} ./test
 
 

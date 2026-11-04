@@ -3,6 +3,7 @@
 		cc	\
 		echo	\
 		fsdb	\
+		ld	\
 		hello	\
 		newfs	\
 		yacc

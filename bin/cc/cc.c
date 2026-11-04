@@ -51,6 +51,18 @@
 # define C4		LIBDIR "/c4"
 #endif
 
+#ifndef LD
+# define LD		BINDIR "/ld"
+#endif
+
+#ifndef CRT0
+# define CRT0		LIBDIR "/crt0.o"
+#endif
+
+#ifndef LIBC
+# define LIBC		LIBDIR "/libc/libc.a"
+#endif
+
 #ifndef AS
 # define AS		BINDIR "/as"
 #endif
@@ -318,6 +330,101 @@ char *mdifile, *symfile, *objfile;
 }
 
 static int
+slen (s)
+const char *s;
+{
+	const char *p;
+
+	p = s;
+	while (*p)
+		++p;
+	return p - s;
+}
+
+static int
+scopy (d, s)
+char *d;
+const char *s;
+{
+	char *p;
+
+	p = d;
+	while ((*p++ = *s++) != 0)
+		;
+	return p - d - 1;
+}
+
+static int
+runld (objs, nobj, out, stack)
+char **objs;
+int nobj;
+const char *out;
+int stack;
+{
+	char	*argv[64];
+	char	 sbuf[32];
+	char	 stackbuf[32];
+	int	 n, ws;
+
+	if (nobj + 8 >= (int) (sizeof argv / sizeof argv[0]))
+		errx (1, "cc: too many link inputs");
+	n = 0;
+	argv[n++] = LD;
+	argv[n++] = "-o";
+	argv[n++] = (char *) out;
+	scopy (stackbuf, "-mstack=");
+	scopy (stackbuf + slen (stackbuf), sbuf);
+	/* print the stack size without stdio */
+	if (stack < 0)
+		stack = 0;
+	{
+		char tmp[12];
+		int i, v;
+		i = 0;
+		v = stack;
+		if (v == 0)
+			tmp[i++] = '0';
+		while (v > 0) {
+			tmp[i++] = '0' + v % 10;
+			v /= 10;
+		}
+		{
+			int j;
+			for (j = 0; j < i; ++j)
+				sbuf[j] = tmp[i - 1 - j];
+			sbuf[i] = 0;
+		}
+	}
+	scopy (stackbuf, "-mstack=");
+	scopy (stackbuf + slen (stackbuf), sbuf);
+	argv[n++] = stackbuf;
+	argv[n++] = CRT0;
+	{
+		int i;
+		for (i = 0; i < nobj; ++i)
+			argv[n++] = objs[i];
+	}
+	argv[n++] = LIBC;
+	argv[n] = NULL;
+
+	switch (fork ()) {
+	case -1:
+		err (1, "ld: fork()");
+	case 0:
+		execv (LD, argv);
+		err (1, "ld: execv('%s')", LD);
+	default:
+		if (wait (&ws) == -1)
+			err (1, "ld: wait()");
+		if (!WIFEXITED (ws) || WEXITSTATUS (ws) != 0) {
+			warnx ("ld");
+			return 1;
+		}
+		return 0;
+	}
+}
+
+static int
 compile (arg)
 char **arg;
 {
@@ -388,9 +495,15 @@ main (argc, argv)
 int	  argc;
 char	**argv;
 {
-	int	 i;
+	int	 i, n;
+	char	*out, *objs[64];
+	int	 nobjs, stack;
 
-	/* parse options cc understands */
+	keeptemps = false;
+	out = NULL;
+	nobjs = 0;
+	stack = 2048;
+
 	for (i = 1; i < argc; ) {
 		if (strcmp (argv[i], "-k") == 0) {
 			keeptemps = true;
@@ -402,6 +515,12 @@ char	**argv;
 			else
 				errx (1, "unknown code model: %s",
 				      argv[i] + 9);
+		} else if (strcmp (argv[i], "-o") == 0 && i + 1 < argc) {
+			out = argv[++i];
+		} else if (strncmp (argv[i], "-o", 2) == 0) {
+			out = argv[i] + 2;
+		} else if (strncmp (argv[i], "-mstack=", 8) == 0) {
+			stack = atoi (argv[i] + 8);
 		} else {
 			++i;
 			continue;
@@ -412,13 +531,34 @@ char	**argv;
 		--argc;
 	}
 
-	/* compile files */
 	for (i = 1; i < argc; ++i) {
-		if (argv[i] != NULL && argv[i][0] != '-') {
-			if (compile (&argv[i]) != 0)
-				return 1;
+		if (argv[i] == NULL || argv[i][0] == '-')
+			continue;
+		n = slen (argv[i]);
+		if (out != NULL && n > 2 && argv[i][n - 2] == '.'
+		    && argv[i][n - 1] == 'o') {
+			if (nobjs < 64)
+				objs[nobjs++] = argv[i];
+			continue;
+		}
+		if (out != NULL && n > 2 && argv[i][n - 2] == '.'
+		    && argv[i][n - 1] == 'a') {
+			if (nobjs < 64)
+				objs[nobjs++] = argv[i];
+			continue;
+		}
+		if (compile (&argv[i]) != 0)
+			return 1;
+		if (out != NULL) {
+			if (nobjs < 64)
+				objs[nobjs++] = ssuffix (argv[i], "o");
 		}
 	}
 
+	if (out != NULL) {
+		if (runld (objs, nobjs, out, stack) != 0)
+			return 1;
+	}
 	return 0;
 }
+

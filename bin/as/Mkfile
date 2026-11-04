@@ -6,7 +6,7 @@ CFLAGS += -Wall -Wextra
 # Assemble the test program, link it, and run it.
 check: ${RDEPS} as
 	${EMU} ./as -felf32 -mcpu=80286 -o test.o test.asm
-	$./xcc -o test test.o
+	${EMU} $./bin/cc/cc -o test test.o
 	${EMU} ./test
 
 # Compile the assembler with bin/cc's passes (cpp/c0/c1/c3).  This checks
@@ -21,9 +21,9 @@ selfcheck: ${RDEPS}
 	${EMU} ../../lib/c3/c3a < as.opt > as.alc
 	${EMU} ../../lib/c3/c3b as.str as.sym < as.alc > as.mdi
 	${EMU} ../../lib/c4/c4 -o as_self.o as.sym < as.mdi
-	$./xcc -mstack=4096 -o as_self as_self.o
+	${EMU} $./bin/cc/cc -mstack=4096 -o as_self as_self.o
 	${EMU} ./as_self -felf32 -mcpu=80286 -o test_self.o test.asm
-	$./xcc -o test_self test_self.o
+	${EMU} $./bin/cc/cc -o test_self test_self.o
 	${EMU} ./test_self
 	@echo "bin/cc compiled as.c through c3 and c4"
 
