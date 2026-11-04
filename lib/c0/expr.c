@@ -353,6 +353,11 @@ struct node *l, *r;
 			lt->t_op == T_ARY ? "array" : "function");
 		return mknode ('=', lt, l, r);
 	}
+	if (lt->t_op == T_STRUCT || lt->t_op == T_UNION) {
+		typerr ("cannot assign '%s' by value",
+			lt->t_op == T_STRUCT ? "struct" : "union");
+		return mknode ('=', lt, l, r);
+	}
 	if (!compat (lt, rt)) {
 		typerr ("bad asgn");
 	} else if (op != '=') {
