@@ -233,200 +233,253 @@ int idx;
 	}
 }
 
-static void
-opt_b (idx)
-int idx;
+struct bctx {
+	struct insn	*in;
+	int		 idx, size, isimm, hasb, sgn;
+	word		 a, b, dst, mask;
+};
+
+static int
+opt_b_fold (c)
+struct bctx *c;
+{
+	word av, v;
+	int ok;
+	short sa, sb;
+	struct insn *in;
+
+	if (c->size == SZ_D || !c->hasb || !ISCONST (c->a))
+		return 0;
+	in = c->in;
+	av = kval[c->a] & c->mask;
+	v = 0;
+	ok = 1;
+	sa = (short) av;
+	sb = (short) c->b;
+	if (c->size == SZ_B) {
+		if (av & 0x80)
+			sa = (short) (av | 0xff00);
+		if (c->b & 0x80)
+			sb = (short) (c->b | 0xff00);
+	}
+	switch (in->v.b.bop) {
+	case '+': v = av + c->b; break;
+	case '-': v = av - c->b; break;
+	case '*': v = av * c->b; break;
+	case '&': v = av & c->b; break;
+	case '|': v = av | c->b; break;
+	case '^': v = av ^ c->b; break;
+	case '/':
+	case '%':
+		if (c->b == 0) { ok = 0; break; }
+		if (c->sgn)
+			v = in->v.b.bop == '/' ? sa / sb : sa % sb;
+		else
+			v = in->v.b.bop == '/' ? av / c->b : av % c->b;
+		break;
+	case 'l':
+		if (c->b >= 16) { ok = 0; break; }
+		v = av << c->b;
+		break;
+	case 'r':
+		if (c->b >= 16) { ok = 0; break; }
+		v = av >> c->b;
+		break;
+	case '<': v = c->sgn ? sa < sb : av < c->b; break;
+	case '>': v = c->sgn ? sa > sb : av > c->b; break;
+	case 'L': v = c->sgn ? sa <= sb : av <= c->b; break;
+	case 'G': v = c->sgn ? sa >= sb : av >= c->b; break;
+	case 'E': v = c->sgn ? sa == sb : av == c->b; break;
+	case 'N': v = c->sgn ? sa != sb : av != c->b; break;
+	default: ok = 0;
+	}
+	if (!ok)
+		return 0;
+	setconst (c->idx, c->dst, c->size, v & c->mask);
+	return 1;
+}
+
+static int
+opt_b_ident (c)
+struct bctx *c;
 {
 	struct insn *in;
-	word a, b, dst, mask, v;
-	int size, hasb, isimm, j, sgn;
-	short sa, sb;
 
-	in = &ins[idx];
-	a = resolve (in->v.b.a);
-	dst = in->v.b.dst;
-	isimm = in->v.b.fl & 8;
-	b = isimm ? in->v.b.bi : resolve (in->v.b.bi);
-	in->v.b.a = a;
-	in->v.b.bi = b;
-	size = in->v.b.fl & 3;
-	mask = maskof (size);
-	sgn = (in->v.b.fl & 4) != 0;
-
-	/* c3 can use an immediate only in the right operand.  For
-	   commutative operations, move a constant left operand over. */
-	if (size != SZ_D && !isimm && ISCONST (a) &&
-	    b < MAXVAL && !ISCONST (b) &&
-	    (in->v.b.bop == '+' || in->v.b.bop == '&' ||
+	in = c->in;
+	if (c->size == SZ_D || !c->hasb)
+		return 0;
+	if ((in->v.b.bop == '+' || in->v.b.bop == '-' ||
 	     in->v.b.bop == '|' || in->v.b.bop == '^' ||
-	     in->v.b.bop == 'E' || in->v.b.bop == 'N')) {
-		word olda = a;
-		a = b;
-		b = kval[olda] & mask;
-		in->v.b.a = a;
-		in->v.b.bi = b;
-		in->v.b.fl |= 8;
-		isimm = 1;
+	     in->v.b.bop == 'l' || in->v.b.bop == 'r') && c->b == 0) {
+		alias (c->idx, c->dst, c->a);
+		return 1;
 	}
-
-	hasb = isimm || (b < MAXVAL && ISCONST (b));
-	if (hasb && !isimm)
-		b = kval[b] & mask;
-
-	/* constant folding */
-	if (size != SZ_D && hasb && ISCONST (a)) {
-		word av = kval[a] & mask;
-		int ok = 1;
-		v = 0;
-		sa = (short) av;
-		sb = (short) b;
-		if (size == SZ_B) {
-			if (av & 0x80)
-				sa = (short) (av | 0xff00);
-			if (b & 0x80)
-				sb = (short) (b | 0xff00);
-		}
-		switch (in->v.b.bop) {
-		case '+': v = av + b; break;
-		case '-': v = av - b; break;
-		case '*': v = av * b; break;
-		case '&': v = av & b; break;
-		case '|': v = av | b; break;
-		case '^': v = av ^ b; break;
-		case '/':
-		case '%':
-			if (b == 0) { ok = 0; break; }
-			if (sgn)
-				v = in->v.b.bop == '/' ? sa / sb : sa % sb;
-			else
-				v = in->v.b.bop == '/' ? av / b : av % b;
-			break;
-		case 'l':
-			if (b >= 16) { ok = 0; break; }
-			v = av << b;
-			break;
-		case 'r':
-			if (b >= 16) { ok = 0; break; }
-			v = av >> b;
-			break;
-		case '<': v = sgn ? sa < sb : av < b; break;
-		case '>': v = sgn ? sa > sb : av > b; break;
-		case 'L': v = sgn ? sa <= sb : av <= b; break;
-		case 'G': v = sgn ? sa >= sb : av >= b; break;
-		case 'E': v = sgn ? sa == sb : av == b; break;
-		case 'N': v = sgn ? sa != sb : av != b; break;
-		default: ok = 0;
-		}
-		if (ok) {
-			setconst (idx, dst, size, v & mask);
-			return;
-		}
+	if (in->v.b.bop == '*' && c->b == 1) {
+		alias (c->idx, c->dst, c->a);
+		return 1;
 	}
-
-	/* algebraic identities using a known right operand */
-	if (size != SZ_D && hasb) {
-		if ((in->v.b.bop == '+' || in->v.b.bop == '-' ||
-		     in->v.b.bop == '|' || in->v.b.bop == '^' ||
-		     in->v.b.bop == 'l' || in->v.b.bop == 'r') && b == 0) {
-			alias (idx, dst, a);
-			return;
-		}
-		if (in->v.b.bop == '*' && b == 1) {
-			alias (idx, dst, a);
-			return;
-		}
-		if (in->v.b.bop == '&' && b == mask) {
-			alias (idx, dst, a);
-			return;
-		}
-		if (in->v.b.bop == '&' && b == 0) {
-			setconst (idx, dst, size, 0);
-			return;
-		}
-		if (in->v.b.bop == '*' && b == 0) {
-			setconst (idx, dst, size, 0);
-			return;
-		}
-		if (in->v.b.bop == '|' && b == mask) {
-			setconst (idx, dst, size, mask);
-			return;
-		}
-		if (!isimm &&
-		    (in->v.b.bop == '-' || in->v.b.bop == '^' ||
-		     in->v.b.bop == 'E' || in->v.b.bop == 'N') &&
-		    a == resolve (in->v.b.bi)) {
-			if (in->v.b.bop == 'E')
-				setconst (idx, dst, size, 1);
-			else if (in->v.b.bop == 'N')
-				setconst (idx, dst, size, 0);
-			else
-				setconst (idx, dst, size, 0);
-			return;
-		}
+	if (in->v.b.bop == '&' && c->b == c->mask) {
+		alias (c->idx, c->dst, c->a);
+		return 1;
 	}
-
-	/* strength-reduce constant multiply/divide/remainder */
-	if (!isimm && hasb && size != SZ_D) {
-		if (b == 1 && (in->v.b.bop == '/' || in->v.b.bop == '%')) {
-			if (in->v.b.bop == '/')
-				alias (idx, dst, a);
-			else
-				setconst (idx, dst, size, 0);
-			return;
-		}
-		if (b != 0 && (b & (b - 1)) == 0 && b > 1 &&
-		    (in->v.b.bop == '*' || in->v.b.bop == '/' ||
-		     in->v.b.bop == '%')) {
-			int sh = 0;
-			word t = b;
-			while (t > 1) {
-				t >>= 1;
-				++sh;
-			}
-			if (in->v.b.bop == '*') {
-				in->v.b.bop = 'l';
-				b = sh;
-			} else if (in->v.b.bop == '/') {
-				in->v.b.bop = 'r';
-				b = sh;
-			} else {
-				in->v.b.bop = '&';
-				b = b - 1;
-			}
-			in->v.b.bi = b;
-		}
+	if (in->v.b.bop == '&' && c->b == 0) {
+		setconst (c->idx, c->dst, c->size, 0);
+		return 1;
 	}
+	if (in->v.b.bop == '*' && c->b == 0) {
+		setconst (c->idx, c->dst, c->size, 0);
+		return 1;
+	}
+	if (in->v.b.bop == '|' && c->b == c->mask) {
+		setconst (c->idx, c->dst, c->size, c->mask);
+		return 1;
+	}
+	if (!c->isimm &&
+	    (in->v.b.bop == '-' || in->v.b.bop == '^' ||
+	     in->v.b.bop == 'E' || in->v.b.bop == 'N') &&
+	    c->a == resolve (in->v.b.bi)) {
+		if (in->v.b.bop == 'E')
+			setconst (c->idx, c->dst, c->size, 1);
+		else
+			setconst (c->idx, c->dst, c->size, 0);
+		return 1;
+	}
+	return 0;
+}
 
-	/* mark a constant RHS as an immediate where c3 supports it */
-	if (size != SZ_D && hasb && !isimm &&
+static void
+opt_b_strength (c)
+struct bctx *c;
+{
+	struct insn *in;
+	int sh;
+	word t;
+
+	in = c->in;
+	if (c->isimm || !c->hasb || c->size == SZ_D)
+		return;
+	if (c->b == 1 && (in->v.b.bop == '/' || in->v.b.bop == '%')) {
+		if (in->v.b.bop == '/')
+			alias (c->idx, c->dst, c->a);
+		else
+			setconst (c->idx, c->dst, c->size, 0);
+		return;
+	}
+	if (c->b == 0 || (c->b & (c->b - 1)) != 0 || c->b <= 1 ||
+	    (in->v.b.bop != '*' && in->v.b.bop != '/' &&
+	     in->v.b.bop != '%'))
+		return;
+	sh = 0;
+	t = c->b;
+	while (t > 1) {
+		t >>= 1;
+		++sh;
+	}
+	if (in->v.b.bop == '*') {
+		in->v.b.bop = 'l';
+		c->b = sh;
+	} else if (in->v.b.bop == '/') {
+		in->v.b.bop = 'r';
+		c->b = sh;
+	} else {
+		in->v.b.bop = '&';
+		c->b = c->b - 1;
+	}
+	in->v.b.bi = c->b;
+}
+
+static void
+opt_b_markimm (c)
+struct bctx *c;
+{
+	struct insn *in;
+
+	in = c->in;
+	if (c->size != SZ_D && c->hasb && !c->isimm &&
 	    in->v.b.bop != '*' && in->v.b.bop != '/' &&
 	    in->v.b.bop != '%') {
 		in->v.b.fl |= 8;
-		in->v.b.bi = b & mask;
-		isimm = 1;
+		in->v.b.bi = c->b & c->mask;
+		c->isimm = 1;
 	}
+}
 
-	/* CSE identical pure binaries */
-	for (j = block_start; j < idx; ++j) {
+static void
+opt_b_cse (c)
+struct bctx *c;
+{
+	int j;
+	struct insn *in;
+
+	in = c->in;
+	for (j = block_start; j < c->idx; ++j) {
 		if (ins[j].op != 'b')
 			continue;
 		if (ins[j].v.b.fl != in->v.b.fl)
 			continue;
 		if (ins[j].v.b.bop != in->v.b.bop)
 			continue;
-		if (resolve (ins[j].v.b.a) != a)
+		if (resolve (ins[j].v.b.a) != c->a)
 			continue;
 		if (in->v.b.fl & 8) {
 			if (ins[j].v.b.bi != in->v.b.bi)
 				continue;
 		} else if (resolve (ins[j].v.b.bi) != in->v.b.bi)
 			continue;
-		if (CSIZE (ins[j].v.b.dst) != CSIZE (dst))
+		if (CSIZE (ins[j].v.b.dst) != CSIZE (c->dst))
 			continue;
-		ren[dst] = resolve (ins[j].v.b.dst);
-		ins[idx].op = 0;
+		ren[c->dst] = resolve (ins[j].v.b.dst);
+		ins[c->idx].op = 0;
 		return;
 	}
+}
+
+static void
+opt_b (idx)
+int idx;
+{
+	struct bctx c;
+	struct insn *in;
+
+	in = &ins[idx];
+	c.a = resolve (in->v.b.a);
+	in->v.b.a = c.a;
+	c.in = in;
+	c.idx = idx;
+	c.dst = in->v.b.dst;
+	c.isimm = in->v.b.fl & 8;
+	c.b = c.isimm ? in->v.b.bi : resolve (in->v.b.bi);
+	in->v.b.bi = c.b;
+	c.size = in->v.b.fl & 3;
+	c.mask = maskof (c.size);
+	c.sgn = (in->v.b.fl & 4) != 0;
+
+	/* c3 can use an immediate only in the right operand.  For
+	   commutative operations, move a constant left operand over. */
+	if (c.size != SZ_D && !c.isimm && ISCONST (c.a) &&
+	    c.b < MAXVAL && !ISCONST (c.b) &&
+	    (in->v.b.bop == '+' || in->v.b.bop == '&' ||
+	     in->v.b.bop == '|' || in->v.b.bop == '^' ||
+	     in->v.b.bop == 'E' || in->v.b.bop == 'N')) {
+		word olda = c.a;
+		c.a = c.b;
+		c.b = kval[olda] & c.mask;
+		in->v.b.a = c.a;
+		in->v.b.bi = c.b;
+		in->v.b.fl |= 8;
+		c.isimm = 1;
+	}
+	c.hasb = c.isimm || (c.b < MAXVAL && ISCONST (c.b));
+	if (c.hasb && !c.isimm)
+		c.b = kval[c.b] & c.mask;
+
+	if (opt_b_fold (&c))
+		return;
+	if (opt_b_ident (&c))
+		return;
+	opt_b_strength (&c);
+	opt_b_markimm (&c);
+	opt_b_cse (&c);
 }
 
 /* store-to-load forwarding state */
@@ -440,167 +493,157 @@ clear_last ()
 	have_last = 0;
 }
 
-void
-optimize ()
+static void
+opt_insn (i)
+int i;
 {
-	int	i, k;
-	word	w;
+	struct insn *in;
+	int k;
+	word w;
+
+	in = &ins[i];
+	if (in->op == 'L')
+		block_start = i + 1;
+	switch (in->op) {
+	case 0:
+		break;
+	case 'i':
+		cse_i (i, in->v.i.dst);
+		break;
+	case 'S':
+		cse_S (i, in->v.S.dst);
+		break;
+	case 'g':
+		cse_addr (i, in->v.g.dst, 0);
+		break;
+	case 'l':
+		cse_addr (i, in->v.l.dst, 1);
+		break;
+	case 'C':
+		opt_C (i);
+		break;
+	case 'u':
+		opt_u (i);
+		break;
+	case 'b':
+		opt_b (i);
+		break;
+	case '*': {
+		word a = resolve (in->v.m.a);
+		in->v.m.a = a;
+		if (have_last && last_addr == a &&
+		    last_size == in->v.m.size) {
+			ren[in->v.m.dst] = last_src;
+			ins[i].op = 0;
+		} else
+			clear_last ();
+		break;
+	}
+	case '=': {
+		word a = resolve (in->v.m.dst);
+		word s = resolve (in->v.m.a);
+		in->v.m.dst = a;
+		in->v.m.a = s;
+		if (have_last && last_addr == a &&
+		    last_size == in->v.m.size) {
+			ins[last_idx].op = 0;
+			last_src = s;
+			last_idx = i;
+		} else {
+			have_last = 1;
+			last_addr = a;
+			last_src = s;
+			last_size = in->v.m.size;
+			last_idx = i;
+		}
+		break;
+	}
+	case 'p':
+	case 'q': {
+		word s = resolve (in->v.g.sym);
+		in->v.g.sym = s;
+		cse_p (i, in->v.g.dst);
+		break;
+	}
+	case 'f':
+		in->v.m.a = resolve (in->v.m.a);
+		clear_last ();
+		break;
+	case 's':
+		in->v.m.dst = resolve (in->v.m.dst);
+		in->v.m.a = resolve (in->v.m.a);
+		clear_last ();
+		break;
+	case 'c':
+		in->v.c.a = resolve (in->v.c.a);
+		for (k = 0; k < (int) in->v.c.n; ++k) {
+			w = argpool[in->v.c.argi + k];
+			w = (w & 0x8000) | resolve (AVAL (w));
+			argpool[in->v.c.argi + k] = w;
+		}
+		clear_last ();
+		break;
+	case 'R':
+		in->v.R.a = resolve (in->v.R.a);
+		clear_last ();
+		break;
+	case 'r':
+		clear_last ();
+		break;
+	case 'L':
+		clear_last ();
+		break;
+	case 'J':
+		for (k = 0; k < (int) LN (in->v.L.argn); ++k)
+			argpool[LARGI (in->v.L.argn) + k] =
+			    resolve (argpool[LARGI (in->v.L.argn) + k]);
+		clear_last ();
+		break;
+	case 'B': {
+		word argn, lab, base;
+		int n;
+
+		in->v.B.a = resolve (in->v.B.a);
+		argn = in->v.B.argn;
+		for (k = 0; k < (int) BN (argn); ++k)
+			argpool[BARGI (argn) + k] =
+			    resolve (argpool[BARGI (argn) + k]);
+		for (k = 0; k < (int) BNF (argn); ++k)
+			argpool[BARGI (argn) + BN (argn) + k] =
+			    resolve (argpool[BARGI (argn)
+					     + BN (argn) + k]);
+		if (ISCONST (in->v.B.a)) {
+			if (kval[in->v.B.a]) {
+				lab = in->v.B.lab;
+				base = BARGI (argn);
+				n = BN (argn);
+			} else {
+				lab = in->v.B.lab2;
+				base = BARGI (argn) + BN (argn);
+				n = BNF (argn);
+			}
+			in->op = 'J';
+			in->v.L.lab = lab;
+			in->v.L.argn = (base << 4) | n;
+		}
+		clear_last ();
+		break;
+	}
+	}
+	if (in->op == 'J' || in->op == 'B' ||
+	    in->op == 'R' || in->op == 'r')
+		block_start = i + 1;
+}
+
+static void
+opt_dce ()
+{
+	int i, k, changed;
+	word w;
 	struct insn *in;
 
-	have_last = 0;
-	/* initialize the rename map and constants */
-	for (i = 0; i < (int) nval; ++i) {
-		ren[i] = i;
-		vsz[i] &= 3;
-	}
-	for (i = 0; i < nins; ++i)
-		if (ins[i].op == 'i' && ins[i].v.i.size != SZ_D) {
-			w = ins[i].v.i.dst;
-			vsz[w] = ins[i].v.i.size | 0x80;
-			kval[w] = ins[i].v.i.imm & maskof (ins[i].v.i.size);
-		}
-
-	/* ---- phase 1: local optimization ---- */
-	block_start = 0;
-	for (i = 0; i < nins; ++i) {
-		in = &ins[i];
-		if (in->op == 'L')
-			block_start = i + 1;
-		switch (in->op) {
-		case 0:
-			break;
-		case 'i':
-			cse_i (i, in->v.i.dst);
-			break;
-		case 'S':
-			cse_S (i, in->v.S.dst);
-			break;
-		case 'g':
-			cse_addr (i, in->v.g.dst, 0);
-			break;
-		case 'l':
-			cse_addr (i, in->v.l.dst, 1);
-			break;
-		case 'C':
-			opt_C (i);
-			break;
-		case 'u':
-			opt_u (i);
-			break;
-		case 'b':
-			opt_b (i);
-			break;
-		case '*': {
-			word a = resolve (in->v.m.a);
-			in->v.m.a = a;
-			if (have_last && last_addr == a &&
-			    last_size == in->v.m.size) {
-				ren[in->v.m.dst] = last_src;
-				ins[i].op = 0;
-			} else
-				clear_last ();
-			break;
-		}
-		case '=': {
-			word a = resolve (in->v.m.dst);
-			word s = resolve (in->v.m.a);
-			in->v.m.dst = a;
-			in->v.m.a = s;
-			if (have_last && last_addr == a &&
-			    last_size == in->v.m.size) {
-				ins[last_idx].op = 0;
-				last_src = s;
-				last_idx = i;
-			} else {
-				have_last = 1;
-				last_addr = a;
-				last_src = s;
-				last_size = in->v.m.size;
-				last_idx = i;
-			}
-			break;
-		}
-		case 'p':
-		case 'q': {
-			word s = resolve (in->v.g.sym);
-			in->v.g.sym = s;
-			cse_p (i, in->v.g.dst);
-			break;
-		}
-		case 'f':
-			in->v.m.a = resolve (in->v.m.a);
-			clear_last ();
-			break;
-		case 's':
-			in->v.m.dst = resolve (in->v.m.dst);
-			in->v.m.a = resolve (in->v.m.a);
-			clear_last ();
-			break;
-		case 'c':
-			in->v.c.a = resolve (in->v.c.a);
-			for (k = 0; k < (int) in->v.c.n; ++k) {
-				w = argpool[in->v.c.argi + k];
-				w = (w & 0x8000) | resolve (AVAL (w));
-				argpool[in->v.c.argi + k] = w;
-			}
-			clear_last ();
-			break;
-		case 'R':
-			in->v.R.a = resolve (in->v.R.a);
-			clear_last ();
-			break;
-		case 'r':
-			clear_last ();
-			break;
-		case 'L':
-			clear_last ();
-			break;
-		case 'J':
-			for (k = 0; k < (int) LN (in->v.L.argn); ++k)
-				argpool[LARGI (in->v.L.argn) + k] =
-				    resolve (argpool[LARGI (in->v.L.argn) + k]);
-			clear_last ();
-			break;
-		case 'B': {
-			word argn, lab, base;
-			int n;
-
-			in->v.B.a = resolve (in->v.B.a);
-			argn = in->v.B.argn;
-			for (k = 0; k < (int) BN (argn); ++k)
-				argpool[BARGI (argn) + k] =
-				    resolve (argpool[BARGI (argn) + k]);
-			for (k = 0; k < (int) BNF (argn); ++k)
-				argpool[BARGI (argn) + BN (argn) + k] =
-				    resolve (argpool[BARGI (argn)
-						     + BN (argn) + k]);
-			if (ISCONST (in->v.B.a)) {
-				if (kval[in->v.B.a]) {
-					lab = in->v.B.lab;
-					base = BARGI (argn);
-					n = BN (argn);
-				} else {
-					lab = in->v.B.lab2;
-					base = BARGI (argn) + BN (argn);
-					n = BNF (argn);
-				}
-				in->op = 'J';
-				in->v.L.lab = lab;
-				in->v.L.argn = (base << 4) | n;
-			}
-			clear_last ();
-			break;
-		}
-		}
-		if (in->op == 'J' || in->op == 'B' ||
-		    in->op == 'R' || in->op == 'r')
-			block_start = i + 1;
-	}
-
-	/* ---- phase 2: dead code elimination ---- */
 	for (;;) {
-		int changed = 0;
-
+		changed = 0;
 		for (i = 0; i < (int) nval; ++i)
 			ren[i] = 0;
 		for (i = 0; i < nins; ++i) {
@@ -665,12 +708,14 @@ optimize ()
 		if (!changed)
 			break;
 	}
+}
 
-	/* Remove a jump that falls through to the next label when its edge
-	   arguments are already the label's parameters. */
+static void
+opt_fallthrough ()
+{
+	int i, j, k, n, ok;
+
 	for (i = 0; i < nins; ++i) {
-		int j, n, ok;
-
 		if (ins[i].op != 'J')
 			continue;
 		for (j = i + 1; j < nins && ins[j].op == 0; ++j)
@@ -692,4 +737,35 @@ optimize ()
 		if (ok)
 			ins[i].op = 0;
 	}
+}
+
+void
+optimize ()
+{
+	int i;
+	word w;
+
+	have_last = 0;
+	/* initialize the rename map and constants */
+	for (i = 0; i < (int) nval; ++i) {
+		ren[i] = i;
+		vsz[i] &= 3;
+	}
+	for (i = 0; i < nins; ++i)
+		if (ins[i].op == 'i' && ins[i].v.i.size != SZ_D) {
+			w = ins[i].v.i.dst;
+			vsz[w] = ins[i].v.i.size | 0x80;
+			kval[w] = ins[i].v.i.imm & maskof (ins[i].v.i.size);
+		}
+
+	/* ---- phase 1: local optimization ---- */
+	block_start = 0;
+	for (i = 0; i < nins; ++i)
+		opt_insn (i);
+
+	/* ---- phase 2: dead code elimination ---- */
+	opt_dce ();
+
+	/* ---- phase 3: remove fall-through jumps ---- */
+	opt_fallthrough ();
 }

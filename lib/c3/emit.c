@@ -179,7 +179,7 @@ int r;
 	/* AX, CX and DX are used as fixed scratch registers by the
 	   code generator (shifts use CL, mul/div and casts use AX/DX), so
 	   do not keep long-lived values there. */
-	if (r == R_AX || r == R_CX || r == R_DX)
+	if (r == R_AX || r == R_CX || r == R_DX || r == R_DI)
 		return 0;
 	if (VADDR (v) && !addrreg[r])
 		return 0;
@@ -1048,9 +1048,7 @@ int pc;
 		dwval (in->v.b.bi, 1, &bh);
 		if (!VHOMED (in->v.b.bi)
 		    && VREG (in->v.b.bi) == R_AX) {
-			bt = scratch (pc, 0);
-			if (bt == R_AX)
-				bt = R_BX;
+			bt = R_DI;
 			o_reg (&a, bt);
 			o_reg (&b, R_AX);
 			mov_w (&a, &b);
@@ -1060,7 +1058,7 @@ int pc;
 		mov_w (&a, &al);
 		o_reg (&a, R_AX);
 		alu ('s', SZ_W, &a, &bl);
-		o_reg (&a, R_BX);
+		o_reg (&a, R_DI);
 		o_reg (&b, R_AX);
 		mov_w (&a, &b);
 		o_reg (&a, R_AX);
@@ -1077,7 +1075,7 @@ int pc;
 		case '>':
 			jcc (2, dwf);
 			o_reg (&a, R_AX);
-			o_reg (&b, R_BX);
+			o_reg (&b, R_DI);
 			alu ('o', SZ_W, &a, &b);
 			jcc (4, dwf);
 			jump (dwt);
@@ -1085,20 +1083,20 @@ int pc;
 		case 'L':
 			jcc (2, dwt);
 			o_reg (&a, R_AX);
-			o_reg (&b, R_BX);
+			o_reg (&b, R_DI);
 			alu ('o', SZ_W, &a, &b);
 			jcc (4, dwt);
 			jump (dwf);
 			break;
 		case 'E':
 			o_reg (&a, R_AX);
-			o_reg (&b, R_BX);
+			o_reg (&b, R_DI);
 			alu ('o', SZ_W, &a, &b);
 			jcc (4, dwt);
 			break;
 		case 'N':
 			o_reg (&a, R_AX);
-			o_reg (&b, R_BX);
+			o_reg (&b, R_DI);
 			alu ('o', SZ_W, &a, &b);
 			jcc (5, dwt);
 			break;
@@ -1133,9 +1131,7 @@ int pc;
 		} else if (VREG (in->v.b.bi) != R_AX) {
 			o_reg (&b, VREG (in->v.b.bi));
 		} else {
-			bt = scratch (pc, 0);
-			if (bt == R_AX)
-				bt = R_BX;
+			bt = R_DI;
 			o_reg (&a, bt);
 			o_reg (&b, R_AX);
 			mov_w (&a, &b);
@@ -1194,9 +1190,7 @@ int pc;
 		} else if (VREG (in->v.b.bi) != R_AX) {
 			o_reg (&b, VREG (in->v.b.bi));
 		} else {
-			bt = scratch (pc, 0);
-			if (bt == R_AX)
-				bt = R_BX;
+			bt = R_DI;
 			o_reg (&a, bt);
 			o_reg (&b, R_AX);
 			mov_w (&a, &b);
@@ -1293,7 +1287,7 @@ int pc;
 		} else {
 			t = scratch (pc, 0);
 			if (t == R_AX || t == R_DX)
-				t = R_BX;
+				t = R_CX;
 			readop (in->v.b.bi, &a, pc);
 			o_reg (&b, t);
 			mov_w (&b, &a);
@@ -1310,7 +1304,7 @@ int pc;
 		} else {
 			t = scratch (pc, 0);
 			if (t == R_AX || t == R_DX)
-				t = R_BX;
+				t = R_CX;
 			readop (in->v.b.bi, &a, pc);
 			o_reg (&b, t);
 			mov_w (&b, &a);
@@ -1338,7 +1332,7 @@ int pc;
 					break;
 				}
 			if (t < 0)
-				t = R_BX;
+				t = R_CX;
 			avoid[t] = 1;
 			toreg (in->v.b.bi, t, pc);
 			o_reg (&a, t);
@@ -1583,7 +1577,7 @@ int pc;
 					break;
 				}
 			if (t < 0)
-				t = R_BX;
+				t = R_CX;
 			avoid[t] = 1;
 			toreg (in->v.m.a, t, pc);
 			memop (in->v.m.dst, &m, pc);

@@ -20,7 +20,7 @@ selfcheck: ${RDEPS}
 	${EMU} ../../lib/c2/c2 < as.ssa > as.opt
 	${EMU} ../../lib/c3/c3 as.str as.sym < as.opt > as.mdi
 	${EMU} ../../lib/c4/c4 -o as_self.o as.sym < as.mdi
-	$./xcc -o as_self as_self.o
+	$./xcc -mstack=4096 -o as_self as_self.o
 	${EMU} ./as_self -felf32 -mcpu=80286 -o test_self.o test.asm
 	$./xcc -o test_self test_self.o
 	${EMU} ./test_self
