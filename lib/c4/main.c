@@ -1513,6 +1513,18 @@ int op;
 static struct op	pprev[2], pcur[2];
 static int		phave;
 
+static void
+copyop (d, s)
+struct op *d, *s;
+{
+	d->type = s->type;
+	d->reg = s->reg;
+	d->size = s->size;
+	d->base = s->base;
+	d->disp = s->disp;
+	d->sym = s->sym;
+}
+
 static int
 same_mem (a, b)
 struct op *a, *b;
@@ -1527,8 +1539,8 @@ flush_prev ()
 {
 	if (!phave)
 		return;
-	ops[0] = pprev[0];
-	ops[1] = pprev[1];
+	copyop (&ops[0], &pprev[0]);
+	copyop (&ops[1], &pprev[1]);
 	nops = 2;
 	enc_mov ();
 	phave = 0;
@@ -1544,8 +1556,8 @@ md_mov ()
 	mdop (&pcur[0], size);
 	mdop (&pcur[1], size);
 	if (!phave) {
-		pprev[0] = pcur[0];
-		pprev[1] = pcur[1];
+		copyop (&pprev[0], &pcur[0]);
+		copyop (&pprev[1], &pcur[1]);
 		phave = 1;
 		return;
 	}
@@ -1557,16 +1569,16 @@ md_mov ()
 	     pprev[1].type == OT_IMM) &&
 	    (pcur[0].type == OT_R16 || pcur[0].type == OT_R8) &&
 	    pcur[1].type == OT_MEM && same_mem (&pprev[0], &pcur[1])) {
-		v = pprev[1];
+		copyop (&v, &pprev[1]);
 		flush_prev ();
 		if ((pcur[0].type == OT_R16 || pcur[0].type == OT_R8) &&
 		    pcur[0].reg == v.reg && pcur[0].type == v.type) {
 			phave = 0;
 			return;
 		}
-		pcur[1] = v;
-		pprev[0] = pcur[0];
-		pprev[1] = pcur[1];
+		copyop (&pcur[1], &v);
+		copyop (&pprev[0], &pcur[0]);
+		copyop (&pprev[1], &pcur[1]);
 		phave = 1;
 		return;
 	}
@@ -1592,14 +1604,14 @@ md_mov ()
 	    (pcur[1].type == OT_R16 || pcur[1].type == OT_R8 ||
 	     pcur[1].type == OT_IMM) &&
 	    same_mem (&pprev[0], &pcur[0])) {
-		pprev[0] = pcur[0];
-		pprev[1] = pcur[1];
+		copyop (&pprev[0], &pcur[0]);
+		copyop (&pprev[1], &pcur[1]);
 		return;
 	}
 
 	flush_prev ();
-	pprev[0] = pcur[0];
-	pprev[1] = pcur[1];
+	copyop (&pprev[0], &pcur[0]);
+	copyop (&pprev[1], &pcur[1]);
 	phave = 1;
 }
 
