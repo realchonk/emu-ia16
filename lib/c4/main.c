@@ -14,11 +14,11 @@ typedef unsigned char	byte;
 typedef unsigned short	word;
 
 #define LINEBUF		256
-#define MAXGSYM		2048
-#define GNAMEPOOL	20000
-#define MAXLSYM		2048
-#define LNAMEPOOL	1280
-#define MAXFIX		2048
+#define MAXGSYM		512
+#define GNAMEPOOL	10000
+#define MAXLSYM		512
+#define LNAMEPOOL	1024
+#define MAXFIX		1024
 #define MAXNAME		64
 
 #define S_UNDEF		0xff
