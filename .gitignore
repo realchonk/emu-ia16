@@ -37,3 +37,5 @@
 **/*.bin
 /bin/as/as_self
 /bin/as/test_self
+/lib/c0/y.tab.c
+/lib/cpp/y.tab.c
