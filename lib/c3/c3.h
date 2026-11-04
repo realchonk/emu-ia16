@@ -5,8 +5,8 @@
 #define SC_GLOBAL	1
 #define SC_STATIC	2
 
-#define MAXINS	1600	/* SSA instructions per function */
-#define MAXVAL	1408	/* SSA values per function (must cover c1's NVALUE) */
+#define MAXINS	1312	/* SSA instructions per function */
+#define MAXVAL	1140	/* SSA values per function (must cover c1's NVALUE) */
 #define MAXLOC	32	/* local (arg+var) slots */
 #define ARGPOOL	512	/* shared pool for edge/call arguments */
 

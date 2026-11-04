@@ -1185,17 +1185,12 @@ int pc;
 }
 
 static int
-gendw (in, pc)
+gendw_cmp (in, pc)
 struct insn *in;
 int pc;
 {
 	struct opnd al, bl, ah, bh, a, b;
-	int cmp = cmpidx (in->v.b.bop);
 
-	if ((in->v.b.fl & 3) != SZ_D)
-		return 0;
-
-	if (cmp >= 0) {
 		int bt;
 		word dwt = ilab (pc, 0), dwf = ilab (pc, 1), dwe = ilab (pc, 2);
 
@@ -1274,9 +1269,15 @@ int pc;
 		mov_w (&a, &b);
 		label (dwe);
 		return 1;
-	}
+}
 
-	if (in->v.b.bop == '+' || in->v.b.bop == '-') {
+static int
+gendw_addsub (in, pc)
+struct insn *in;
+int pc;
+{
+	struct opnd a, b, al;
+
 		int adw = VDW (in->v.b.a);
 		int bdw = VDW (in->v.b.bi);
 		int bt;
@@ -1332,10 +1333,15 @@ int pc;
 		o_reg (&al, R_AX);
 		mov_w (&a, &al);
 		return 1;
-	}
+}
 
-	if (in->v.b.bop == '&' || in->v.b.bop == '|'
-	    || in->v.b.bop == '^') {
+static int
+gendw_bit (in, pc)
+struct insn *in;
+int pc;
+{
+	struct opnd a, b, al;
+
 		int adw = VDW (in->v.b.a);
 		int bdw = VDW (in->v.b.bi);
 		int bt;
@@ -1390,8 +1396,22 @@ int pc;
 		o_reg (&al, R_AX);
 		mov_w (&a, &al);
 		return 1;
-	}
+}
 
+static int
+gendw (in, pc)
+struct insn *in;
+int pc;
+{
+	if ((in->v.b.fl & 3) != SZ_D)
+		return 0;
+	if (cmpidx (in->v.b.bop) >= 0)
+		return gendw_cmp (in, pc);
+	if (in->v.b.bop == '+' || in->v.b.bop == '-')
+		return gendw_addsub (in, pc);
+	if (in->v.b.bop == '&' || in->v.b.bop == '|' ||
+	    in->v.b.bop == '^')
+		return gendw_bit (in, pc);
 	return 0;
 }
 

@@ -494,12 +494,131 @@ clear_last ()
 }
 
 static void
-opt_insn (i)
+opt_mem (i)
+int i;
+{
+	struct insn *in;
+	word a, s;
+
+	in = &ins[i];
+	switch (in->op) {
+	case '*':
+		a = resolve (in->v.m.a);
+		in->v.m.a = a;
+		if (have_last && last_addr == a &&
+		    last_size == in->v.m.size) {
+			ren[in->v.m.dst] = last_src;
+			ins[i].op = 0;
+		} else
+			clear_last ();
+		break;
+	case '=':
+		a = resolve (in->v.m.dst);
+		s = resolve (in->v.m.a);
+		in->v.m.dst = a;
+		in->v.m.a = s;
+		if (have_last && last_addr == a &&
+		    last_size == in->v.m.size) {
+			ins[last_idx].op = 0;
+			last_src = s;
+			last_idx = i;
+		} else {
+			have_last = 1;
+			last_addr = a;
+			last_src = s;
+			last_size = in->v.m.size;
+			last_idx = i;
+		}
+		break;
+	case 'f':
+		in->v.m.a = resolve (in->v.m.a);
+		clear_last ();
+		break;
+	case 's':
+		in->v.m.dst = resolve (in->v.m.dst);
+		in->v.m.a = resolve (in->v.m.a);
+		clear_last ();
+		break;
+	}
+}
+
+static void
+opt_call (i)
 int i;
 {
 	struct insn *in;
 	int k;
 	word w;
+
+	in = &ins[i];
+	in->v.c.a = resolve (in->v.c.a);
+	for (k = 0; k < (int) in->v.c.n; ++k) {
+		w = argpool[in->v.c.argi + k];
+		w = (w & 0x8000) | resolve (AVAL (w));
+		argpool[in->v.c.argi + k] = w;
+	}
+	clear_last ();
+}
+
+static void
+opt_flow (i)
+int i;
+{
+	struct insn *in;
+	word argn, lab, base;
+	int n, k;
+
+	in = &ins[i];
+	if (in->op == 'J') {
+		for (k = 0; k < (int) LN (in->v.L.argn); ++k)
+			argpool[LARGI (in->v.L.argn) + k] =
+			    resolve (argpool[LARGI (in->v.L.argn) + k]);
+		clear_last ();
+		return;
+	}
+	in->v.B.a = resolve (in->v.B.a);
+	argn = in->v.B.argn;
+	for (k = 0; k < (int) BN (argn); ++k)
+		argpool[BARGI (argn) + k] =
+		    resolve (argpool[BARGI (argn) + k]);
+	for (k = 0; k < (int) BNF (argn); ++k)
+		argpool[BARGI (argn) + BN (argn) + k] =
+		    resolve (argpool[BARGI (argn) + BN (argn) + k]);
+	if (ISCONST (in->v.B.a)) {
+		if (kval[in->v.B.a]) {
+			lab = in->v.B.lab;
+			base = BARGI (argn);
+			n = BN (argn);
+		} else {
+			lab = in->v.B.lab2;
+			base = BARGI (argn) + BN (argn);
+			n = BNF (argn);
+		}
+		in->op = 'J';
+		in->v.L.lab = lab;
+		in->v.L.argn = (base << 4) | n;
+	}
+	clear_last ();
+}
+
+static void
+opt_pq (i)
+int i;
+{
+	struct insn *in;
+	word s;
+
+	in = &ins[i];
+	s = resolve (in->v.g.sym);
+	in->v.g.sym = s;
+	cse_p (i, in->v.g.dst);
+}
+
+static void
+opt_insn (i)
+int i;
+{
+	struct insn *in;
 
 	in = &ins[i];
 	if (in->op == 'L')
@@ -528,60 +647,18 @@ int i;
 	case 'b':
 		opt_b (i);
 		break;
-	case '*': {
-		word a = resolve (in->v.m.a);
-		in->v.m.a = a;
-		if (have_last && last_addr == a &&
-		    last_size == in->v.m.size) {
-			ren[in->v.m.dst] = last_src;
-			ins[i].op = 0;
-		} else
-			clear_last ();
-		break;
-	}
-	case '=': {
-		word a = resolve (in->v.m.dst);
-		word s = resolve (in->v.m.a);
-		in->v.m.dst = a;
-		in->v.m.a = s;
-		if (have_last && last_addr == a &&
-		    last_size == in->v.m.size) {
-			ins[last_idx].op = 0;
-			last_src = s;
-			last_idx = i;
-		} else {
-			have_last = 1;
-			last_addr = a;
-			last_src = s;
-			last_size = in->v.m.size;
-			last_idx = i;
-		}
-		break;
-	}
-	case 'p':
-	case 'q': {
-		word s = resolve (in->v.g.sym);
-		in->v.g.sym = s;
-		cse_p (i, in->v.g.dst);
-		break;
-	}
+	case '*':
+	case '=':
 	case 'f':
-		in->v.m.a = resolve (in->v.m.a);
-		clear_last ();
-		break;
 	case 's':
-		in->v.m.dst = resolve (in->v.m.dst);
-		in->v.m.a = resolve (in->v.m.a);
-		clear_last ();
+		opt_mem (i);
+		break;
+	case 'p':
+	case 'q':
+		opt_pq (i);
 		break;
 	case 'c':
-		in->v.c.a = resolve (in->v.c.a);
-		for (k = 0; k < (int) in->v.c.n; ++k) {
-			w = argpool[in->v.c.argi + k];
-			w = (w & 0x8000) | resolve (AVAL (w));
-			argpool[in->v.c.argi + k] = w;
-		}
-		clear_last ();
+		opt_call (i);
 		break;
 	case 'R':
 		in->v.R.a = resolve (in->v.R.a);
@@ -594,41 +671,9 @@ int i;
 		clear_last ();
 		break;
 	case 'J':
-		for (k = 0; k < (int) LN (in->v.L.argn); ++k)
-			argpool[LARGI (in->v.L.argn) + k] =
-			    resolve (argpool[LARGI (in->v.L.argn) + k]);
-		clear_last ();
+	case 'B':
+		opt_flow (i);
 		break;
-	case 'B': {
-		word argn, lab, base;
-		int n;
-
-		in->v.B.a = resolve (in->v.B.a);
-		argn = in->v.B.argn;
-		for (k = 0; k < (int) BN (argn); ++k)
-			argpool[BARGI (argn) + k] =
-			    resolve (argpool[BARGI (argn) + k]);
-		for (k = 0; k < (int) BNF (argn); ++k)
-			argpool[BARGI (argn) + BN (argn) + k] =
-			    resolve (argpool[BARGI (argn)
-					     + BN (argn) + k]);
-		if (ISCONST (in->v.B.a)) {
-			if (kval[in->v.B.a]) {
-				lab = in->v.B.lab;
-				base = BARGI (argn);
-				n = BN (argn);
-			} else {
-				lab = in->v.B.lab2;
-				base = BARGI (argn) + BN (argn);
-				n = BNF (argn);
-			}
-			in->op = 'J';
-			in->v.L.lab = lab;
-			in->v.L.argn = (base << 4) | n;
-		}
-		clear_last ();
-		break;
-	}
 	}
 	if (in->op == 'J' || in->op == 'B' ||
 	    in->op == 'R' || in->op == 'r')
