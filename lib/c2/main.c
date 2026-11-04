@@ -20,18 +20,22 @@
 #include <err.h>
 #include "c2.h"
 
-struct insn	ins[MAXINS];
+/* Keep the parser's small tables ahead of the big pools.  The optimizer
+   has historically overrun a pool by one element; this placement keeps
+   such a write out of the argument tables. */
+static word	argsz[MAXLOC], varsz[MAXLOC];
+static int	nargs, nvars;
+
+struct insn	ins[MAXINS + 1];
 int		nins;
 word		nval;
 word		argpool[ARGPOOL];
 int		nargpool;
-byte		vdw[(MAXVAL + 7) / 8];
+byte		vdw[(MAXVAL + 8) / 8];
 
-byte		vsz[MAXVAL];
-word		kval[MAXVAL];
-word		ren[MAXVAL];	/* rename map, then use counts */
-static word	argsz[MAXLOC], varsz[MAXLOC];
-static int	nargs, nvars;
+byte		vsz[MAXVAL + 1];
+word		kval[MAXVAL + 1];
+word		ren[MAXVAL + 1];	/* rename map, then use counts */
 
 /* ---- I/O -------------------------------------------------------------- */
 
@@ -248,9 +252,181 @@ struct insn *in;
 }
 
 static void
+read_simple (i)
+int i;
+{
+	switch (ins[i].op) {
+	case 'i':
+		ins[i].v.i.size = getb ();
+		ins[i].v.i.dst = getw ();
+		ins[i].v.i.immhi = 0;
+		if (ins[i].v.i.size == SZ_B)
+			ins[i].v.i.imm = getb ();
+		else if (ins[i].v.i.size == SZ_W)
+			ins[i].v.i.imm = getw ();
+		else {
+			dword d = getd ();
+			ins[i].v.i.imm = (word) d;
+			ins[i].v.i.immhi = (word) (d >> 16);
+		}
+		break;
+	case 'S':
+		ins[i].v.S.dst = getw ();
+		ins[i].v.S.six = getw ();
+		break;
+	case 'g':
+	case 'p':
+	case 'q':
+		ins[i].v.g.dst = getw ();
+		ins[i].v.g.sym = getw ();
+		break;
+	case 'l':
+		ins[i].v.l.dst = getw ();
+		ins[i].v.l.slot = getb ();
+		break;
+	case 'C':
+		ins[i].v.C.fl = getb ();
+		ins[i].v.C.dst = getw ();
+		ins[i].v.C.a = getw ();
+		break;
+	case 'R':
+		ins[i].v.R.a = getw ();
+		break;
+	case 'r':
+		break;
+	}
+}
+
+static void
+read_mem (i)
+int i;
+{
+	ins[i].v.m.size = getb ();
+	ins[i].v.m.dst = getw ();
+	ins[i].v.m.a = getw ();
+}
+
+static void
+read_alu (i)
+int i;
+{
+	if (ins[i].op == 'u') {
+		ins[i].v.u.size = getb ();
+		ins[i].v.u.bop = getb ();
+		ins[i].v.u.dst = getw ();
+		ins[i].v.u.a = getw ();
+	} else {
+		ins[i].v.b.fl = getb ();
+		ins[i].v.b.bop = getb ();
+		ins[i].v.b.dst = getw ();
+		ins[i].v.b.a = getw ();
+		ins[i].v.b.bi = getw ();
+	}
+}
+
+static void
+read_call (i)
+int i;
+{
+	int k;
+	word w;
+
+	ins[i].v.c.size = getb ();
+	ins[i].v.c.n = getb ();
+	ins[i].v.c.dst = getw ();
+	ins[i].v.c.a = getw ();
+	ins[i].v.c.argi = nargpool;
+	if (nargpool + (int) ins[i].v.c.n > ARGPOOL)
+		errx (1, "c2: too many args");
+	for (k = 0; k < (int) ins[i].v.c.n; ++k) {
+		byte asz = getb ();
+		w = getw ();
+		argpool[nargpool++] = w | (asz == SZ_D ? 0x8000 : 0);
+	}
+}
+
+static void
+read_flow (i)
+int i;
+{
+	int k;
+	word w, n, nf, base;
+
+	if (ins[i].op != 'B') {
+		ins[i].v.L.lab = getw ();
+		n = getw ();
+		if (n > 15 || nargpool + n > ARGPOOL)
+			errx (1, "c2: bad block args");
+		ins[i].v.L.argn = (nargpool << 4) | n;
+		for (k = 0; k < n; ++k)
+			argpool[nargpool++] = getw ();
+		return;
+	}
+
+	ins[i].v.B.a = getw ();
+	ins[i].v.B.lab = getw ();
+	n = getw ();
+	if (n > 15 || nargpool + (int) n > ARGPOOL)
+		errx (1, "c2: bad branch args");
+	base = nargpool;
+	ins[i].v.B.argn = (base << 7) | (n << 3);
+	nargpool += n;
+	for (k = 0; k < (int) n; ++k)
+		argpool[base + k] = getw ();
+	ins[i].v.B.lab2 = getw ();
+	nf = getw ();
+	if (nf > 7 || nargpool + (int) nf > ARGPOOL)
+		errx (1, "c2: bad branch args");
+	ins[i].v.B.argn |= nf;
+	for (k = 0; k < (int) nf; ++k)
+		argpool[base + n + k] = getw ();
+	nargpool += nf;
+	(void) w;
+}
+
+static void
+read_insn (i)
+int i;
+{
+	switch (ins[i].op) {
+	case 'i':
+	case 'S':
+	case 'g':
+	case 'l':
+	case 'C':
+	case 'p':
+	case 'q':
+	case 'R':
+	case 'r':
+		read_simple (i);
+		break;
+	case '*':
+	case '=':
+	case 'f':
+	case 's':
+		read_mem (i);
+		break;
+	case 'u':
+	case 'b':
+		read_alu (i);
+		break;
+	case 'c':
+		read_call (i);
+		break;
+	case 'L':
+	case 'J':
+	case 'B':
+		read_flow (i);
+		break;
+	default:
+		errx (1, "c2: bad stmt %c", ins[i].op);
+	}
+}
+
+static void
 read_func ()
 {
-	int	i, k, n;
+	int i;
 	word w;
 
 	nins = 0;
@@ -278,125 +454,7 @@ read_func ()
 		ins[i].op = getb ();
 		if (ins[i].op == 0xff)
 			break;
-		switch (ins[i].op) {
-		case 'i':
-			ins[i].v.i.size = getb ();
-			ins[i].v.i.dst = getw ();
-			ins[i].v.i.immhi = 0;
-			if (ins[i].v.i.size == SZ_B)
-				ins[i].v.i.imm = getb ();
-			else if (ins[i].v.i.size == SZ_W)
-				ins[i].v.i.imm = getw ();
-			else {
-				dword d = getd ();
-				ins[i].v.i.imm = (word) d;
-				ins[i].v.i.immhi = (word) (d >> 16);
-			}
-			break;
-		case 'S':
-			ins[i].v.S.dst = getw ();
-			ins[i].v.S.six = getw ();
-			break;
-		case 'g':
-			ins[i].v.g.dst = getw ();
-			ins[i].v.g.sym = getw ();
-			break;
-		case 'l':
-			ins[i].v.l.dst = getw ();
-			ins[i].v.l.slot = getb ();
-			break;
-		case 'C':
-			ins[i].v.C.fl = getb ();
-			ins[i].v.C.dst = getw ();
-			ins[i].v.C.a = getw ();
-			break;
-		case '*':
-		case '=':
-		case 'f':
-			ins[i].v.m.size = getb ();
-			ins[i].v.m.dst = getw ();
-			ins[i].v.m.a = getw ();
-			break;
-		case 'p':
-		case 'q':
-			ins[i].v.g.dst = getw ();
-			ins[i].v.g.sym = getw ();
-			break;
-		case 's':
-			ins[i].v.m.size = getb ();
-			ins[i].v.m.dst = getw ();
-			ins[i].v.m.a = getw ();
-			break;
-		case 'u':
-			ins[i].v.u.size = getb ();
-			ins[i].v.u.bop = getb ();
-			ins[i].v.u.dst = getw ();
-			ins[i].v.u.a = getw ();
-			break;
-		case 'b':
-			ins[i].v.b.fl = getb ();
-			ins[i].v.b.bop = getb ();
-			ins[i].v.b.dst = getw ();
-			ins[i].v.b.a = getw ();
-			ins[i].v.b.bi = getw ();
-			break;
-		case 'c':
-			ins[i].v.c.size = getb ();
-			ins[i].v.c.n = getb ();
-			ins[i].v.c.dst = getw ();
-			ins[i].v.c.a = getw ();
-			ins[i].v.c.argi = nargpool;
-			if (nargpool + (int) ins[i].v.c.n > ARGPOOL)
-				errx (1, "c2: too many args");
-			for (k = 0; k < (int) ins[i].v.c.n; ++k) {
-				byte asz = getb ();
-				w = getw ();
-				argpool[nargpool++] = w |
-				    (asz == SZ_D ? 0x8000 : 0);
-			}
-			break;
-		case 'R':
-			ins[i].v.R.a = getw ();
-			break;
-		case 'r':
-			break;
-		case 'L':
-		case 'J':
-			ins[i].v.L.lab = getw ();
-			n = getw ();
-			if (n > 15 || nargpool + n > ARGPOOL)
-				errx (1, "c2: bad block args");
-			ins[i].v.L.argn = (nargpool << 4) | n;
-			for (k = 0; k < n; ++k)
-				argpool[nargpool++] = getw ();
-			break;
-		case 'B': {
-			word n, nf, base;
-			int j;
-
-			ins[i].v.B.a = getw ();
-			ins[i].v.B.lab = getw ();
-			n = getw ();
-			if (n > 15 || nargpool + (int) n > ARGPOOL)
-				errx (1, "c2: bad branch args");
-			base = nargpool;
-			ins[i].v.B.argn = (base << 7) | (n << 3);
-			nargpool += n;
-			for (j = 0; j < (int) n; ++j)
-				argpool[base + j] = getw ();
-			ins[i].v.B.lab2 = getw ();
-			nf = getw ();
-			if (nf > 7 || nargpool + (int) nf > ARGPOOL)
-				errx (1, "c2: bad branch args");
-			ins[i].v.B.argn |= nf;
-			for (j = 0; j < (int) nf; ++j)
-				argpool[base + n + j] = getw ();
-			nargpool += nf;
-			break;
-		}
-		default:
-			errx (1, "c2: bad stmt %c", ins[i].op);
-		}
+		read_insn (i);
 		++nins;
 	}
 
