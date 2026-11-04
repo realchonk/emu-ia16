@@ -27,6 +27,7 @@ extern int		nloc, nargs;
 
 static int	ivlo[MAXVAL], ivhi[MAXVAL];
 static int	vslot[MAXVAL];
+static word	defpc[MAXVAL];
 static byte	vinfo[MAXVAL];	/* [2:0] reg, [3] homed, [4] CL_ADDR */
 
 #define VREG(v)		((vinfo[v]) & 7)
@@ -53,6 +54,8 @@ int lo, hi;
 		ivlo[v] = lo;
 	if (hi >= 0 && ivhi[v] < hi)
 		ivhi[v] = hi;
+	if (lo >= 0 && hi == lo)
+		defpc[v] = lo;
 }
 
 static void
@@ -74,6 +77,7 @@ compute_intervals ()
 	for (v = 0; v < nval; ++v) {
 		ivlo[v] = 0x7fff;
 		ivhi[v] = -1;
+		defpc[v] = 0xffff;
 		vinfo[v] = 0;
 	}
 
@@ -159,6 +163,116 @@ compute_intervals ()
 			ivlo[v] = ivhi[v] = 0;
 }
 
+#define VDIR_LOCAL	1
+#define VDIR_GLOBAL	2
+#define VDIR_CALL	3
+
+/* vdir[v] during analysis: bit 1 = local, bit 2 = global, bit 4 = call */
+static byte	vdir[MAXVAL];
+
+static void
+nodir (v)
+word v;
+{
+	if (v < nval)
+		vdir[v] = 0;
+}
+
+/*
+ * Address values that are only ever used as a load/store address (local
+ * or global) or as a direct call target do not need to be materialised.
+ */
+static void
+local_direct ()
+{
+	int i, k;
+	word v;
+
+	for (v = 0; v < nval; ++v)
+		vdir[v] = 0;
+	for (i = 0; i < nins; ++i) {
+		if (ins[i].op == 'l')
+			vdir[ins[i].v.l.dst] |= 1;
+		else if (ins[i].op == 'g')
+			vdir[ins[i].v.g.dst] |= 2 | 4;
+	}
+	for (i = 0; i < nins; ++i) {
+		switch (ins[i].op) {
+		case 'c':
+			if (ins[i].v.c.a < nval)
+				vdir[ins[i].v.c.a] &= ~3;
+			for (k = 0; k < (int) ins[i].v.c.n; ++k)
+				nodir (AVAL (argpool[ins[i].v.c.argi + k]));
+			break;
+		case 'C':
+			nodir (ins[i].v.C.a);
+			break;
+		case '*':
+			if (ins[i].v.m.a < nval)
+				vdir[ins[i].v.m.a] &= ~4;
+			break;
+		case '=':
+			if (ins[i].v.m.dst < nval)
+				vdir[ins[i].v.m.dst] &= ~4;
+			nodir (ins[i].v.m.a);
+			break;
+		case 'p':
+		case 'q':
+			nodir (ins[i].v.g.sym);
+			break;
+		case 'f':
+			nodir (ins[i].v.m.a);
+			break;
+		case 's':
+			nodir (ins[i].v.m.dst);
+			nodir (ins[i].v.m.a);
+			break;
+		case 'u':
+			nodir (ins[i].v.u.a);
+			break;
+		case 'b':
+			nodir (ins[i].v.b.a);
+			if (!(ins[i].v.b.fl & 8))
+				nodir (ins[i].v.b.bi);
+			break;
+		case 'R':
+			nodir (ins[i].v.R.a);
+			break;
+		case 'J':
+			for (k = 0; k < (int) LN (ins[i].v.L.argn); ++k)
+				nodir (argpool[LARGI (ins[i].v.L.argn) + k]);
+			break;
+		case 'B':
+			nodir (ins[i].v.B.a);
+			for (k = 0; k < (int) BN (ins[i].v.B.argn); ++k)
+				nodir (argpool[BARGI (ins[i].v.B.argn) + k]);
+			for (k = 0; k < (int) BNF (ins[i].v.B.argn); ++k)
+				nodir (argpool[BARGI (ins[i].v.B.argn)
+				    + BN (ins[i].v.B.argn) + k]);
+			break;
+		}
+	}
+	for (i = 0; i < nins; ++i) {
+		if (ins[i].op == 'l') {
+			v = ins[i].v.l.dst;
+			if (vdir[v] & 1) {
+				vdir[v] = VDIR_LOCAL;
+				vslot[v] = locsite[ins[i].v.l.slot];
+			} else
+				vdir[v] = 0;
+		} else if (ins[i].op == 'g') {
+			v = ins[i].v.g.dst;
+			if (vdir[v] & 2) {
+				vdir[v] = VDIR_GLOBAL;
+				vslot[v] = ins[i].v.g.sym;
+			} else if (vdir[v] & 4)
+				vdir[v] = VDIR_CALL;
+			else
+				vdir[v] = 0;
+		}
+	}
+}
+
 static int
 crosses_call (v)
 word v;
@@ -190,7 +304,8 @@ static void
 allocate ()
 {
 	int i, j, t, cand, victim, vend, norder, bestlo, src;
-	word v;
+	int di, coal;
+	word v, s;
 	int owner[NREG];
 	word active[NREG];		/* an active value owns a register */
 	int nactive;
@@ -236,6 +351,35 @@ allocate ()
 		}
 
 		cand = -1;
+		coal = 0;
+		di = defpc[v];
+		if (di != 0xffff) {
+			switch (ins[di].op) {
+			case 'C': s = ins[di].v.C.a; break;
+			case 'u': s = ins[di].v.u.a; break;
+			case 'b': s = ins[di].v.b.a; break;
+			case '*':
+				s = ins[di].v.m.size == SZ_B
+				    ? 0xffff : ins[di].v.m.a;
+				break;
+			default: s = 0xffff;
+			}
+			if (s < nval && s != v && !VHOMED (s) &&
+			    ivhi[s] == di && owner[VREG (s)] == s &&
+			    allowed (v, VREG (s)) &&
+			    (!crosses_call (v) || VREG (s) == R_SI ||
+			     VREG (s) == R_DI)) {
+				cand = VREG (s);
+				coal = 1;
+				for (j = 0; j < nactive; ++j)
+					if (active[j] == s) {
+						active[j] = active[--nactive];
+						break;
+					}
+				owner[cand] = v;
+			}
+		}
+		if (!coal)
 		for (t = 0; t < NREG; ++t) {
 			if (!allowed (v, t) || owner[t] != -1)
 				continue;
@@ -437,6 +581,18 @@ int a;
 }
 
 static void
+o_abs (o, s, a)
+struct opnd *o;
+word s;
+int a;
+{
+	o->k = 'A';
+	o->r = 0;
+	o->s = s;
+	o->v = (word) a;
+}
+
+static void
 eop (o)
 struct opnd *o;
 {
@@ -456,6 +612,7 @@ struct opnd *o;
 		md_w (o->v);
 		break;
 	case 'S':
+	case 'A':
 		md_w (o->s);
 		md_w (o->v);
 		break;
@@ -1411,7 +1568,8 @@ int pc;
 		}
 		break;
 	case 'g':
-		if ((vinfo[in->v.g.dst] & 0xc0) == 0x40)
+		if (vdir[in->v.g.dst] == VDIR_CALL ||
+		    vdir[in->v.g.dst] == VDIR_GLOBAL)
 			break;
 		o_sym (&b, in->v.g.sym, 0);
 		if (VHOMED (in->v.g.dst)) {
@@ -1423,6 +1581,8 @@ int pc;
 		}
 		break;
 	case 'l':
+		if (vdir[in->v.l.dst] == VDIR_LOCAL)
+			break;
 		o_bp (&b, locsite[in->v.l.slot]);
 		if (!VHOMED (in->v.l.dst)) {
 			o_reg (&a, VREG (in->v.l.dst));
@@ -1481,6 +1641,22 @@ int pc;
 	}
 }
 
+
+/* memory operand for a direct local, or [reg+off] otherwise */
+static void
+dm (o, v, ar, off)
+struct opnd *o;
+word v;
+int ar, off;
+{
+	if (vdir[v] == VDIR_LOCAL)
+		o_bp (o, vslot[v] + off);
+	else if (vdir[v] == VDIR_GLOBAL)
+		o_abs (o, (word) vslot[v], off);
+	else
+		o_mem (o, ar, off);
+}
+
 static void
 genst (in, pc)
 struct insn *in;
@@ -1492,17 +1668,19 @@ int pc;
 	switch (in->op) {
 	case '*':
 		if (in->v.m.size == SZ_D) {
-			int ar = addrfor (in->v.m.a, pc);
+			int ar = -1;
 
+			if (vdir[in->v.m.a] == 0)
+				ar = addrfor (in->v.m.a, pc);
 			o_reg (&a, R_AX);
-			o_mem (&m, ar, 0);
+			dm (&m, in->v.m.a, ar, 0);
 			load (SZ_W, &a, &m);
 			if (VHOMED (in->v.m.dst)) {
 				o_bp (&m, vslot[in->v.m.dst]);
 				mov_w (&m, &a);
 			}
 			o_reg (&a, R_AX);
-			o_mem (&m, ar, 2);
+			dm (&m, in->v.m.a, ar, 2);
 			load (SZ_W, &a, &m);
 			if (VHOMED (in->v.m.dst)) {
 				o_bp (&m, vslot[in->v.m.dst] + 2);
@@ -1510,7 +1688,12 @@ int pc;
 			}
 			break;
 		}
-		memop (in->v.m.a, &m, pc);
+		if (vdir[in->v.m.a] == VDIR_LOCAL)
+			o_bp (&m, vslot[in->v.m.a]);
+		else if (vdir[in->v.m.a] == VDIR_GLOBAL)
+			o_abs (&m, (word) vslot[in->v.m.a], 0);
+		else
+			memop (in->v.m.a, &m, pc);
 		if (in->v.m.size == SZ_B) {
 			r = !VHOMED (in->v.m.dst) ? VREG (in->v.m.dst)
 						    : scratch (pc, 0);
@@ -1546,25 +1729,27 @@ int pc;
 		break;
 	case '=':
 		if (in->v.m.size == SZ_D) {
-			int ar = addrfor (in->v.m.dst, pc);
+			int ar = -1;
 
+			if (vdir[in->v.m.dst] == 0)
+				ar = addrfor (in->v.m.dst, pc);
 			if (VHOMED (in->v.m.a)) {
 				o_reg (&a, R_AX);
 				o_bp (&m, vslot[in->v.m.a]);
 				mov_w (&a, &m);
-				o_mem (&m, ar, 0);
+				dm (&m, in->v.m.dst, ar, 0);
 				store (SZ_W, &m, &a);
 				o_reg (&a, R_AX);
 				o_bp (&m, vslot[in->v.m.a] + 2);
 				mov_w (&a, &m);
-				o_mem (&m, ar, 2);
+				dm (&m, in->v.m.dst, ar, 2);
 				store (SZ_W, &m, &a);
 			} else {
 				o_reg (&a, VREG (in->v.m.a));
-				o_mem (&m, ar, 0);
+				dm (&m, in->v.m.dst, ar, 0);
 				store (SZ_W, &m, &a);
 				o_imm (&a, 0);
-				o_mem (&m, ar, 2);
+				dm (&m, in->v.m.dst, ar, 2);
 				store (SZ_W, &m, &a);
 			}
 			break;
@@ -1580,12 +1765,22 @@ int pc;
 				t = R_CX;
 			avoid[t] = 1;
 			toreg (in->v.m.a, t, pc);
-			memop (in->v.m.dst, &m, pc);
+			if (vdir[in->v.m.dst] == VDIR_LOCAL)
+				o_bp (&m, vslot[in->v.m.dst]);
+			else if (vdir[in->v.m.dst] == VDIR_GLOBAL)
+				o_abs (&m, (word) vslot[in->v.m.dst], 0);
+			else
+				memop (in->v.m.dst, &m, pc);
 			o_reg (&x, t);
 			store (SZ_B, &m, &x);
 		} else {
 			readop (in->v.m.a, &a, pc);
-			memop (in->v.m.dst, &m, pc);
+			if (vdir[in->v.m.dst] == VDIR_LOCAL)
+				o_bp (&m, vslot[in->v.m.dst]);
+			else if (vdir[in->v.m.dst] == VDIR_GLOBAL)
+				o_abs (&m, (word) vslot[in->v.m.dst], 0);
+			else
+				memop (in->v.m.dst, &m, pc);
 			store (SZ_W, &m, &a);
 		}
 		break;
@@ -1821,6 +2016,7 @@ byte flags;
 
 	compute_intervals ();
 	allocate ();
+	local_direct ();
 	find_saves ();
 	intbase = maxlabel () + 1;
 	epilbl = ilab (nins, 0);

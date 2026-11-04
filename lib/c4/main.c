@@ -660,6 +660,12 @@ struct op *o;
 {
 	int	rm, mod;
 
+	if (o->base == NOBASE) {
+		/* absolute 16-bit displacement, optionally symbolic */
+		outb (((reg & 7) << 3) | 6);
+		emit_abs (o->sym, o->disp, 2);
+		return;
+	}
 	rm = rmtab[o->base & 7];
 	if (o->disp == 0 && rm != 6)
 		mod = 0;
@@ -848,6 +854,21 @@ int iscall, relop;
 		outb (0xff);
 		emit_rm (iscall ? 2 : 4, a);
 		return;
+	}
+	/* A backward branch to an already-defined local label can use the
+	   short form.  Forward branches stay near; their fixups are patched
+	   with the final label value, so later size changes are harmless. */
+	if (!iscall && (a->sym & 0x4000)) {
+		int sec = symsec (a->sym);
+		if (sec == cursec && sec != S_UNDEF) {
+			int off = secs[0].pos;
+			int d = symval (a->sym) + a->disp - (off + 2);
+			if (d >= -128 && d <= 127) {
+				outb (relop >= 0 ? 0x70 + relop : 0xeb);
+				outb (d & 0xff);
+				return;
+			}
+		}
 	}
 	if (iscall) {
 		outb (0xe8);
@@ -1457,6 +1478,14 @@ int size;
 		o->sym = mdsym (s, buf);
 		o->disp = a;
 		break;
+	case 'A':
+		s = mgetw ();
+		a = mgetw ();
+		o->type = OT_MEM;
+		o->base = NOBASE;
+		o->sym = mdsym (s, buf);
+		o->disp = a;
+		break;
 	default:
 		fail ("mdi: bad operand");
 	}
@@ -1481,19 +1510,110 @@ int op;
 	return 0;
 }
 
+static struct op	pprev[2], pcur[2];
+static int		phave;
+
+static int
+same_mem (a, b)
+struct op *a, *b;
+{
+	return a->type == OT_MEM && b->type == OT_MEM &&
+	       a->base == b->base && a->disp == b->disp &&
+	       a->sym == b->sym && a->size == b->size;
+}
+
+static void
+flush_prev ()
+{
+	if (!phave)
+		return;
+	ops[0] = pprev[0];
+	ops[1] = pprev[1];
+	nops = 2;
+	enc_mov ();
+	phave = 0;
+}
+
+static void
+md_mov ()
+{
+	int size;
+	struct op v;
+
+	size = mgetb ();
+	mdop (&pcur[0], size);
+	mdop (&pcur[1], size);
+	if (!phave) {
+		pprev[0] = pcur[0];
+		pprev[1] = pcur[1];
+		phave = 1;
+		return;
+	}
+
+	/* store followed by a load from the same slot: use the stored
+	   register/immediate directly instead of reloading memory. */
+	if (pprev[0].type == OT_MEM &&
+	    (pprev[1].type == OT_R16 || pprev[1].type == OT_R8 ||
+	     pprev[1].type == OT_IMM) &&
+	    (pcur[0].type == OT_R16 || pcur[0].type == OT_R8) &&
+	    pcur[1].type == OT_MEM && same_mem (&pprev[0], &pcur[1])) {
+		v = pprev[1];
+		flush_prev ();
+		if ((pcur[0].type == OT_R16 || pcur[0].type == OT_R8) &&
+		    pcur[0].reg == v.reg && pcur[0].type == v.type) {
+			phave = 0;
+			return;
+		}
+		pcur[1] = v;
+		pprev[0] = pcur[0];
+		pprev[1] = pcur[1];
+		phave = 1;
+		return;
+	}
+
+	/* load followed by a store of the same register back to the same
+	   slot: the store is redundant. */
+	if ((pprev[0].type == OT_R16 || pprev[0].type == OT_R8) &&
+	    pprev[1].type == OT_MEM && pcur[0].type == OT_MEM &&
+	    (pcur[1].type == OT_R16 || pcur[1].type == OT_R8) &&
+	    same_mem (&pprev[1], &pcur[0]) &&
+	    pprev[0].type == pcur[1].type &&
+	    pprev[0].reg == pcur[1].reg) {
+		flush_prev ();
+		phave = 0;
+		return;
+	}
+
+	/* two stores to the same slot: the first is dead. */
+	if (pprev[0].type == OT_MEM &&
+	    (pprev[1].type == OT_R16 || pprev[1].type == OT_R8 ||
+	     pprev[1].type == OT_IMM) &&
+	    pcur[0].type == OT_MEM &&
+	    (pcur[1].type == OT_R16 || pcur[1].type == OT_R8 ||
+	     pcur[1].type == OT_IMM) &&
+	    same_mem (&pprev[0], &pcur[0])) {
+		pprev[0] = pcur[0];
+		pprev[1] = pcur[1];
+		return;
+	}
+
+	flush_prev ();
+	pprev[0] = pcur[0];
+	pprev[1] = pcur[1];
+	phave = 1;
+}
+
 static void
 mdinsn (tag)
 int tag;
 {
 	int	size, op, i;
 
+	if (tag != 'm')
+		flush_prev ();
 	switch (tag) {
 	case 'm':
-		size = mgetb ();
-		mdop (&ops[0], size);
-		mdop (&ops[1], size);
-		nops = 2;
-		enc_mov ();
+		md_mov ();
 		break;
 	case 'a':
 		op = mgetb ();
@@ -1659,11 +1779,13 @@ mdfunc ()
 		if (tag == 0xff)
 			break;
 		if (tag == 'L') {
+			flush_prev ();
 			s = mgetw ();
 			mdlabel (s, buf);
 		} else
 			mdinsn (tag);
 	}
+	flush_prev ();
 	/* frame table */
 	(void) mgetw ();
 	ns = mgetb ();
