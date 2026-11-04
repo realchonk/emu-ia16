@@ -1,9 +1,18 @@
-NAME = c3
-OBJS = main.o emit.o
+.DEFAULT: all
 
-# c3 carries the big allocator pools: optimize for size and use a modest
-# stack so it still links inside the 64 KiB guest segment.
-CFLAGS += -Os
-LDFLAGS += -mstack=512
+# c3 is split into two guest programs so each half fits the 64 KiB
+# segment.  c3a parses SSA and runs the register allocator; c3b consumes
+# the allocated IR and emits MDIR.
+C3AOBJS = main.o alloc.o state.o io.o read.o
+C3BOBJS = genb.o emit.o stateb.o io.o
 
-.expand prog
+all: c3a c3b
+
+c3a: ${C3AOBJS}
+	${LD} -o $@ ${C3AOBJS:F} -mstack=1024 ${LDFLAGS}
+
+c3b: ${C3BOBJS}
+	${LD} -o $@ ${C3BOBJS:F} -mstack=1024 ${LDFLAGS}
+
+clean:
+	rm -f c3a c3b *.o *.elf

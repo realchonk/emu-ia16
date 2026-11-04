@@ -184,11 +184,15 @@ struct type *
 usual (a, b)
 struct type *a, *b;
 {
-	int uns = (a->t_op | b->t_op) & BT_UNSIGNED;
+	int al = a->t_op & BT_LONG, bl = b->t_op & BT_LONG;
+	int au = a->t_op & BT_UNSIGNED, bu = b->t_op & BT_UNSIGNED;
 
-	if ((a->t_op | b->t_op) & BT_LONG)
-		return btype (BT_LONG | uns);
-	return btype (BT_INT | uns);
+	/* int is 16 bits and long is 32, so an unsigned int widens to a
+	   signed long rather than making the whole expression unsigned. */
+	if (al || bl)
+		return btype (BT_LONG | ((al && au) || (bl && bu)
+					 ? BT_UNSIGNED : 0));
+	return btype (BT_INT | (au || bu ? BT_UNSIGNED : 0));
 }
 
 /* K&R-lenient type compatibility */

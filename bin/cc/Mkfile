@@ -7,7 +7,8 @@ CFLAGS += -DCPP=\"$./lib/cpp/cpp\"
 CFLAGS += -DC0=\"$./lib/c0/c0\"
 CFLAGS += -DC1=\"$./lib/c1/c1\"
 CFLAGS += -DC2=\"$./lib/c2/c2\"
-CFLAGS += -DC3=\"$./lib/c3/c3\"
+CFLAGS += -DC3A=\"$./lib/c3/c3a\"
+CFLAGS += -DC3B=\"$./lib/c3/c3b\"
 CFLAGS += -DC4=\"$./lib/c4/c4\"
 
 RDEPS = $./lib/cpp $./lib/c0 $./lib/c1 $./lib/c2 $./lib/c3 $./lib/c4
@@ -19,6 +20,6 @@ run: ${RDEPS} cc
 
 
 clean-extra:
-	rm -f *.i *.ast *.str *.sym *.ssa *.opt *.tmp *.mdi *.asm test test.o
+	rm -f *.i *.ast *.str *.sym *.ssa *.opt *.alc *.tmp *.mdi *.asm test test.o
 
 .expand prog

@@ -5,16 +5,19 @@
 #define SC_GLOBAL	1
 #define SC_STATIC	2
 
-#define MAXINS	1312	/* SSA instructions per function */
+#ifndef MAXINS
+#define MAXINS	1308	/* SSA instructions per function */
+#endif
+#ifndef MAXVAL
 #define MAXVAL	1140	/* SSA values per function (must cover c1's NVALUE) */
+#endif
 #define MAXLOC	32	/* local (arg+var) slots */
-#define ARGPOOL	512	/* shared pool for edge/call arguments */
+#define ARGPOOL	384	/* shared pool for edge/call arguments */
+#define VDWBYTES	((1140 + 7) / 8)	/* serialised value-dword bitmap */
 
 typedef unsigned char	byte;
 typedef unsigned short	word;
 typedef unsigned long	dword;
-
-extern int strfd, symfd;
 
 /* register indices */
 #define R_AX	0
@@ -127,6 +130,25 @@ extern word		nval;
 extern word		argpool[];
 extern int		nargpool;
 extern byte		vdw[];
+extern word		locsize[];
+extern int		nloc, nargs;
+
+/* allocation state shared by c3a's allocator and c3b's emitter */
+extern byte		busybits[];
+extern int		vslot[];
+extern byte		vinfo[];	/* [2:0] reg, [3] homed, [4] CL_ADDR */
+#define VREG(v)		((vinfo[v]) & 7)
+#define VHOMED(v)	((vinfo[v]) & 8)
+#define VADDR(v)	((vinfo[v]) & 16)
+extern byte		vdir[];
+extern int		framesize;
+extern int		locsite[];
+extern int		nsaves;
+extern int		saved[];
+extern const int	addrreg[];
+extern int		avoid[];
+
+extern int		strfd, symfd;
 
 /* value is a dword (kept in a frame slot) */
 #define VDW(v)		(vdw[(v) >> 3] & (1 << ((v) & 7)))
@@ -139,11 +161,19 @@ byte	getb ();
 word	getw ();
 dword	getd ();
 
-/* buffered MDIR output (main.c) */
+/* buffered output (io.c) */
 void	md_b ();
 void	md_w ();
 void	md_flush ();
+void	raw ();
 
+/* SSA reader (read.c) */
+void	read_body ();
+
+/* c3a */
+void	alloc_func ();
+
+/* c3b */
 int	emit_func ();
 
 #endif /* FILE_C3_H */

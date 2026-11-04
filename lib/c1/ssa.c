@@ -532,23 +532,44 @@ int far;
 	return t;
 }
 
+/* the usual arithmetic conversion of two AST type words */
+static word
+usualty (a, b)
+word a, b;
+{
+	int al = (a & 3) == DWORD, bl = (b & 3) == DWORD;
+	int au = a & 4, bu = b & 4;
+
+	if (al || bl)
+		return DWORD | (((al && au) || (bl && bu)) ? 4 : 0);
+	return WORD | ((au || bu) ? 4 : 0);
+}
+
 static word
 binexpr (e)
 struct expr *e;
 {
 	word ty, a, b;
+	byte op;
 	int sz, sg;
 
 	if (e->e_b.b_op == 0x86 || e->e_b.b_op == 0x36 ||
 	    e->e_b.b_op == 0x87 || e->e_b.b_op == 0x37)
 		return logic (e, e->e_b.b_op == 0x86 || e->e_b.b_op == 0x36);
 
+	op = opcode (e->e_b.b_op);
 	ty = e->e_b.b_ty;
+	if (op == '<' || op == '>' || op == 'L' || op == 'G' ||
+	    op == 'E' || op == 'N') {
+		/* Comparisons yield int, but c0 stores only the result type;
+		   derive the operand type from the two subexpressions. */
+		ty = usualty (exprty (e->e_b.b_l), exprty (e->e_b.b_r));
+	}
 	sz = st (ty);
 	sg = signedty (ty);
 	a = eexpr (ty, e->e_b.b_l);
 	b = eexpr (ty, e->e_b.b_r);
-	return emit_bin (sz, sg, opcode (e->e_b.b_op), a, b);
+	return emit_bin (sz, sg, op, a, b);
 }
 
 static word eexpr ();

@@ -39,8 +39,12 @@
 # define C2		LIBDIR "/c2"
 #endif
 
-#ifndef C3
-# define C3		LIBDIR "/c3"
+#ifndef C3A
+# define C3A		LIBDIR "/c3a"
+#endif
+
+#ifndef C3B
+# define C3B		LIBDIR "/c3b"
 #endif
 
 #ifndef C4
@@ -212,34 +216,68 @@ char *ssafile, *optfile;
 }
 
 static int
-runc3 (ssafile, asfile, strfile, symfile)
-char *ssafile, *asfile, *strfile, *symfile;
+runc3a (ssafile, allocfile)
+char *ssafile, *allocfile;
 {
-	char	*argv[4];
+	char	*argv[2];
 	int	 ws;
 
-	argv[0] = C3;
-	argv[1] = strfile;
-	argv[2] = symfile;
-	argv[3] = NULL;
-	
+	argv[0] = C3A;
+	argv[1] = NULL;
+
 	switch (fork ()) {
 	case -1:
-		err (1, "c3: fork()");
+		err (1, "c3a: fork()");
 	case 0:
 		close (0);
 		if (open (ssafile, O_RDONLY) != 0)
-			err (1, "c3: open('%s')", ssafile);
+			err (1, "c3a: open('%s')", ssafile);
 		close (1);
-		if (open (asfile, O_WRONLY | O_CREAT | O_TRUNC, 0644) != 1)
-			err (1, "c3: open('%s')", asfile);
-		execv (C3, argv);
-		err (1, "c3: execv('%s')", C3);
+		if (open (allocfile, O_WRONLY | O_CREAT | O_TRUNC, 0644) != 1)
+			err (1, "c3a: open('%s')", allocfile);
+		execv (C3A, argv);
+		err (1, "c3a: execv('%s')", C3A);
 	default:
 		if (wait (&ws) == -1)
-			err (1, "c3: wait()");
+			err (1, "c3a: wait()");
 		if (!WIFEXITED (ws) || WEXITSTATUS (ws) != 0) {
-			warnx ("c3");
+			warnx ("c3a");
+			return 1;
+		}
+		return 0;
+	}
+}
+
+static int
+runc3b (allocfile, asfile, strfile, symfile)
+char *allocfile, *asfile, *strfile, *symfile;
+{
+	char	*argv[5];
+	int	 ws;
+
+	argv[0] = C3B;
+	argv[1] = strfile;
+	argv[2] = symfile;
+	argv[3] = NULL;
+	argv[4] = NULL;
+
+	switch (fork ()) {
+	case -1:
+		err (1, "c3b: fork()");
+	case 0:
+		close (0);
+		if (open (allocfile, O_RDONLY) != 0)
+			err (1, "c3b: open('%s')", allocfile);
+		close (1);
+		if (open (asfile, O_WRONLY | O_CREAT | O_TRUNC, 0644) != 1)
+			err (1, "c3b: open('%s')", asfile);
+		execv (C3B, argv);
+		err (1, "c3b: execv('%s')", C3B);
+	default:
+		if (wait (&ws) == -1)
+			err (1, "c3b: wait()");
+		if (!WIFEXITED (ws) || WEXITSTATUS (ws) != 0) {
+			warnx ("c3b");
 			return 1;
 		}
 		return 0;
@@ -283,7 +321,7 @@ static int
 compile (arg)
 char **arg;
 {
-	char	*i, *ast, *str, *sym, *tmp, *ssa, *opt, *mdi, *obj;
+	char	*i, *ast, *str, *sym, *tmp, *ssa, *opt, *alc, *mdi, *obj;
 	int	 ret = -1;
 
 	i	= ssuffix (*arg, "i");
@@ -293,6 +331,7 @@ char **arg;
 	tmp	= ssuffix (*arg, "tmp");
 	ssa	= ssuffix (*arg, "ssa");
 	opt	= ssuffix (*arg, "opt");
+	alc	= ssuffix (*arg, "alc");
 	mdi	= ssuffix (*arg, "mdi");
 	obj	= ssuffix (*arg, "o");
 
@@ -310,7 +349,10 @@ char **arg;
 	if (runc2 (ssa, opt) != 0)
 		goto fail;
 
-	if (runc3 (opt, mdi, str, sym) != 0)
+	if (runc3a (opt, alc) != 0)
+		goto fail;
+
+	if (runc3b (alc, mdi, str, sym) != 0)
 		goto fail;
 
 	if (runc4 (mdi, sym, obj) != 0)
@@ -326,6 +368,7 @@ fail:
 		unlink (ast);
 		unlink (tmp);
 		unlink (opt);
+		unlink (alc);
 		unlink (mdi);
 	}
 	free (i);
@@ -334,6 +377,7 @@ fail:
 	free (ast);
 	free (tmp);
 	free (opt);
+	free (alc);
 	free (mdi);
 	free (obj);
 	return ret;
