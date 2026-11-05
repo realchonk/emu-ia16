@@ -425,6 +425,54 @@ int stack;
 }
 
 static int
+assemble (input, output)
+const char *input;
+const char *output;
+{
+	char	*argv[8];
+	int	 ws;
+
+	argv[0] = AS;
+	argv[1] = "-felf32";
+	argv[2] = "-mcpu=80286";
+	argv[3] = "-o";
+	argv[4] = (char *) output;
+	argv[5] = (char *) input;
+	argv[6] = NULL;
+
+	switch (fork ()) {
+	case -1:
+		err (1, "as: fork()");
+	case 0:
+		execv (AS, argv);
+		err (1, "as: execv('%s')", AS);
+	default:
+		if (wait (&ws) == -1)
+			err (1, "as: wait()");
+		if (!WIFEXITED (ws) || WEXITSTATUS (ws) != 0) {
+			warnx ("as");
+			return 1;
+		}
+		return 0;
+	}
+}
+
+static int
+isasm (name)
+const char *name;
+{
+	int n;
+
+	n = strlen (name);
+	if (n > 2 && name[n - 2] == '.'
+	    && (name[n - 1] == 's' || name[n - 1] == 'S'))
+		return 1;
+	if (n > 4 && strcmp (name + n - 4, ".asm") == 0)
+		return 1;
+	return 0;
+}
+
+static int
 compile (arg)
 char **arg;
 {
@@ -545,6 +593,23 @@ char	**argv;
 		    && argv[i][n - 1] == 'a') {
 			if (nobjs < 64)
 				objs[nobjs++] = argv[i];
+			continue;
+		}
+		if (isasm (argv[i])) {
+			char *aout;
+
+			aout = ssuffix (argv[i], "o");
+			if (assemble (argv[i], aout) != 0) {
+				free (aout);
+				return 1;
+			}
+			if (out != NULL) {
+				if (nobjs < 64)
+					objs[nobjs++] = aout;
+				else
+					free (aout);
+			} else
+				free (aout);
 			continue;
 		}
 		if (compile (&argv[i]) != 0)
