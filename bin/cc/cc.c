@@ -355,18 +355,20 @@ const char *s;
 }
 
 static int
-runld (objs, nobj, out, stack)
+runld (objs, nobj, largs, nlargs, out, stack)
 char **objs;
 int nobj;
+char **largs;
+int nlargs;
 const char *out;
 int stack;
 {
-	char	*argv[64];
+	char	*argv[96];
 	char	 sbuf[32];
 	char	 stackbuf[32];
 	int	 n, ws;
 
-	if (nobj + 8 >= (int) (sizeof argv / sizeof argv[0]))
+	if (nobj + nlargs + 8 >= (int) (sizeof argv / sizeof argv[0]))
 		errx (1, "cc: too many link inputs");
 	n = 0;
 	argv[n++] = LD;
@@ -403,6 +405,11 @@ int stack;
 		int i;
 		for (i = 0; i < nobj; ++i)
 			argv[n++] = objs[i];
+	}
+	{
+		int i;
+		for (i = 0; i < nlargs; ++i)
+			argv[n++] = largs[i];
 	}
 	argv[n++] = LIBC;
 	argv[n] = NULL;
@@ -544,14 +551,15 @@ int	  argc;
 char	**argv;
 {
 	int	 i, n;
-	char	*out, *objs[64];
-	int	 nobjs, stack;
+	char	*out, *objs[64], *largs[32];
+	int	 nobjs, nlargs, stack;
 	bool	 compileonly;
 
 	keeptemps = false;
 	compileonly = false;
 	out = NULL;
 	nobjs = 0;
+	nlargs = 0;
 	stack = 2048;
 
 	for (i = 1; i < argc; ) {
@@ -573,6 +581,10 @@ char	**argv;
 			out = argv[i] + 2;
 		} else if (strncmp (argv[i], "-mstack=", 8) == 0) {
 			stack = atoi (argv[i] + 8);
+		} else if (strncmp (argv[i], "-L", 2) == 0
+			   || strncmp (argv[i], "-l", 2) == 0) {
+			if (nlargs < 32)
+				largs[nlargs++] = argv[i];
 		} else {
 			++i;
 			continue;
@@ -627,7 +639,7 @@ char	**argv;
 	if (!compileonly) {
 		if (out == NULL)
 			out = "a.out";
-		if (runld (objs, nobjs, out, stack) != 0)
+		if (runld (objs, nobjs, largs, nlargs, out, stack) != 0)
 			return 1;
 	}
 	return 0;

@@ -95,6 +95,8 @@ static char		namebuf[MAXPATH];
 static char		pathbuf[MAXPATH];
 static char		*ldirs[8];
 static int		ndirs;
+static char		arstore[MAXAR][MAXPATH];
+static byte		arlib[MAXAR];
 
 static struct {
 	char	*name;
@@ -997,16 +999,24 @@ char	**argv;
 		} else if (strncmp (p, "-l:", 3) == 0) {
 			if (narargs >= MAXAR)
 				fail ("too many archives");
-			ars[narargs++] = p + 3;
+			scopy (arstore[narargs], p + 3);
+			arlib[narargs] = 0;
+			ars[narargs] = arstore[narargs];
+			++narargs;
 		} else if (p[0] == '-' && p[1] == 'l') {
 			if (narargs >= MAXAR)
 				fail ("too many archives");
-			ars[narargs++] = findlib (p + 2);
-		} else if (strcmp (p, "-L") == 0)
-			++i;
-		else if (strncmp (p, "-L", 2) == 0)
-			;
-		else if (strcmp (p, "-T") == 0)
+			scopy (arstore[narargs], p + 2);
+			arlib[narargs] = 1;
+			ars[narargs] = arstore[narargs];
+			++narargs;
+		} else if (strcmp (p, "-L") == 0 && i + 1 < argc) {
+			if (ndirs < 8)
+				ldirs[ndirs++] = argv[++i];
+		} else if (strncmp (p, "-L", 2) == 0) {
+			if (ndirs < 8)
+				ldirs[ndirs++] = p + 2;
+		} else if (strcmp (p, "-T") == 0)
 			++i;
 		else if (strncmp (p, "-T", 2) == 0)
 			;
@@ -1022,6 +1032,12 @@ char	**argv;
 
 	if (nobjargs == 0 && narargs == 0)
 		usage ();
+
+	for (i = 0; i < narargs; ++i) {
+		if (!arlib[i])
+			continue;
+		scopy (arstore[i], findlib (arstore[i]));
+	}
 
 	/* symbol 0 is the null symbol */
 	nsyms = 1;
