@@ -23,6 +23,6 @@ run: ${RDEPS} cc
 
 
 clean-extra:
-	rm -f *.i *.ast *.str *.sym *.ssa *.opt *.alc *.tmp *.mdi *.asm test test.o
+	rm -f *.i *.ast *.str *.sym *.ssa *.opt *.alc *.tmp *.mdi *.asm test test.o a.out
 
 .expand prog

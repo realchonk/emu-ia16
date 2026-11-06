@@ -546,8 +546,10 @@ char	**argv;
 	int	 i, n;
 	char	*out, *objs[64];
 	int	 nobjs, stack;
+	bool	 compileonly;
 
 	keeptemps = false;
+	compileonly = false;
 	out = NULL;
 	nobjs = 0;
 	stack = 2048;
@@ -555,6 +557,8 @@ char	**argv;
 	for (i = 1; i < argc; ) {
 		if (strcmp (argv[i], "-k") == 0) {
 			keeptemps = true;
+		} else if (strcmp (argv[i], "-c") == 0) {
+			compileonly = true;
 		} else if (strncmp (argv[i], "-mcmodel=", 9) == 0) {
 			if (strcmp (argv[i] + 9, "large") == 0)
 				cmodel = "-mcmodel=large";
@@ -583,13 +587,13 @@ char	**argv;
 		if (argv[i] == NULL || argv[i][0] == '-')
 			continue;
 		n = slen (argv[i]);
-		if (out != NULL && n > 2 && argv[i][n - 2] == '.'
+		if (!compileonly && n > 2 && argv[i][n - 2] == '.'
 		    && argv[i][n - 1] == 'o') {
 			if (nobjs < 64)
 				objs[nobjs++] = argv[i];
 			continue;
 		}
-		if (out != NULL && n > 2 && argv[i][n - 2] == '.'
+		if (!compileonly && n > 2 && argv[i][n - 2] == '.'
 		    && argv[i][n - 1] == 'a') {
 			if (nobjs < 64)
 				objs[nobjs++] = argv[i];
@@ -603,7 +607,7 @@ char	**argv;
 				free (aout);
 				return 1;
 			}
-			if (out != NULL) {
+			if (!compileonly) {
 				if (nobjs < 64)
 					objs[nobjs++] = aout;
 				else
@@ -614,13 +618,15 @@ char	**argv;
 		}
 		if (compile (&argv[i]) != 0)
 			return 1;
-		if (out != NULL) {
+		if (!compileonly) {
 			if (nobjs < 64)
 				objs[nobjs++] = ssuffix (argv[i], "o");
 		}
 	}
 
-	if (out != NULL) {
+	if (!compileonly) {
+		if (out == NULL)
+			out = "a.out";
 		if (runld (objs, nobjs, out, stack) != 0)
 			return 1;
 	}
