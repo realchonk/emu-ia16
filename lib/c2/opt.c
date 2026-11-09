@@ -770,7 +770,7 @@ opt_fallthrough ()
 		if (ins[j].v.L.lab != ins[i].v.L.lab)
 			continue;
 		n = LN (ins[i].v.L.argn);
-		if (n != LN (ins[j].v.L.argn))
+		if (n != (int) LN (ins[j].v.L.argn))
 			continue;
 		ok = 1;
 		for (k = 0; k < n; ++k)

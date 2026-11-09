@@ -24,7 +24,7 @@
    has historically overrun a pool by one element; this placement keeps
    such a write out of the argument tables. */
 static word	argsz[MAXLOC], varsz[MAXLOC];
-static int	nargs, nvars;
+static int	nargsz, nvarsz;
 
 struct insn	ins[MAXINS + 1];
 int		nins;
@@ -358,7 +358,7 @@ int i;
 		if (n > 15 || nargpool + n > ARGPOOL)
 			errx (1, "c2: bad block args");
 		ins[i].v.L.argn = (nargpool << 4) | n;
-		for (k = 0; k < n; ++k)
+		for (k = 0; k < (int) n; ++k)
 			argpool[nargpool++] = getw ();
 		return;
 	}
@@ -431,19 +431,19 @@ read_func ()
 
 	nins = 0;
 	nargpool = 0;
-	nargs = 0;
-	nvars = 0;
+	nargsz = 0;
+	nvarsz = 0;
 
 	/* args */
 	while ((w = getw ()) != 0xffff)
-		if (nargs < MAXLOC)
-			argsz[nargs++] = w;
+		if (nargsz < MAXLOC)
+			argsz[nargsz++] = w;
 		else
 			errx (1, "c2: too many locals");
 	/* vars */
 	while ((w = getw ()) != 0xffff)
-		if (nvars < MAXLOC)
-			varsz[nvars++] = w;
+		if (nvarsz < MAXLOC)
+			varsz[nvarsz++] = w;
 		else
 			errx (1, "c2: too many locals");
 
@@ -487,10 +487,10 @@ int flags, sym;
 	putb ('F');
 	putb (flags);
 	putw (sym);
-	for (i = 0; i < nargs; ++i)
+	for (i = 0; i < nargsz; ++i)
 		putw (argsz[i]);
 	putw (0xffff);
-	for (i = 0; i < nvars; ++i)
+	for (i = 0; i < nvarsz; ++i)
 		putw (varsz[i]);
 	putw (0xffff);
 	for (i = 0; i < nins; ++i)
